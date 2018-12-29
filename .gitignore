@@ -1,0 +1,12 @@
+# Ignore lock files
+*.lock
+
+# Ignore database
+db/*
+incremental_db/*
+
+# Ignore output
+output_files/*
+
+# Ignore simulation
+simulation/*

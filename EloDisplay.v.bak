@@ -1,0 +1,9 @@
+module EloDisplay(Address, Data, ReadRedbus, WriteRedbus, Enable);
+
+	input [15:0] Address;
+	input [7:0] Data;
+	input ReadRedbus;
+	input WriteRedbus;
+	input Enable;
+
+endmodule

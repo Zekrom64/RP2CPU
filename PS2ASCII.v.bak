@@ -1,0 +1,7 @@
+module PS2ASCII(PS2Clock, PS2Data, WriteChar, CharOut);
+
+	input PS2Clock, PS2Data;
+	output WriteChar;
+	output [7:0] CharOut;
+
+endmodule

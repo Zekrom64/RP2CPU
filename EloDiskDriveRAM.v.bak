@@ -1,0 +1,7 @@
+module EloDiskDriveRAM(Address, Data, Enable, ReadRedbus, WriteRedbus, );
+
+	AlteraRAMBootDisk diskRAM(
+	
+	);
+
+endmodule

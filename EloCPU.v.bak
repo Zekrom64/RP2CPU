@@ -1,0 +1,5 @@
+module EloCPU();
+
+	AlteraRAM64Kx8 memory;
+
+endmodule

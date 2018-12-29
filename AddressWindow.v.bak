@@ -1,0 +1,8 @@
+module AddressWindow(Address, Base, Head);
+	
+	input [15:0] Address, Base, Head;
+	output Valid;
+	output [15:0] Offset;
+	
+
+endmodule

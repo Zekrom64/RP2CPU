@@ -1,0 +1,9 @@
+module EloIOExpander(Address, Data, Enable, IOPort);
+
+	input [15:0] Address;
+	input [7:0] Data;
+	input Enable;
+	
+	inout [15:0] IOPort;
+
+endmodule

@@ -1,0 +1,53 @@
+<rpcboot.bin>
+
+0000: -- --    | // Boot disk drive redbus ID
+0002: -- --    | // Sector counter
+0004: -- --    | // Bootstrap address pointer
+
+0400: 18       | clc              // Clear emulation flag
+0401: FB       | xce
+0402: A5 00    | lda [0x00]       // Map device in [0x00] to redbus window
+0404: EF 00    | mmu 0x00
+0406: C2 30    | rep 0x30         // Clear MX flags
+0408: A9 00 03 | lda 0x300        // Set redbus window offset to 0x300
+040B: EF 01    | mmu 0x01
+040D: EF 02    | mmu 0x02         // Enable redbus
+040F: 64 02    | stz [0x02]       // Store zero to sector number
+0411: A9 00 05 | lda 0x500        // Store 0x500 to [0x04]
+0414: 85 04    | sta [0x04]
+_boot_readsector:
+0416: A5 02    | lda [0x02]       // Set disk drive sector number
+0418: 8D 80 03 | sta (0x380)
+041B: E2 20    | sep 0x20         // Set M flag
+041D: A9 04    | lda 0x04
+041F: 8D 82 03 | sta (0x382)      // Send read disk sector command
+_boot_waitsector:                 // Wait until command finishes
+0422: CB       | wai
+0423: CD 82 03 | cmp (0x382)
+0426: F0 FA    | beq _boot_waitsector
+0428: AD 82 03 | lda (0x382)      // Continue reading if success
+042B: F0 09    | beq _boot_readsectors
+_boot_doboot:
+042D: EF 82    | mmu 0x82         // Disable redbus
+042F: E2 30    | sep 0x30         // Set MX flags
+0431: 38       | sec              // Set emulation flag
+0432: FB       | xce
+0433: 4C 00 05 | jmp 0x500        // Jump to loaded boot image
+_boot_readsectors:
+0436: C2 20    | rep 0x20         // Clear M flag
+0438: A2 00 03 | ldx 0x300        // Set I to 0x300
+043B: 5C       | txi
+043C: A0 40 00 | ldy 0x0040       // Transfer 64 words (128 bytes)
+_boot_xferloop:
+043F: 42       | nxa              // Next word of sector into A
+0440: 92 04    | sta ((0x04))     // Store at bootstrap address pointer
+0442: E6 04    | inc [0x04]       // Increment pointer by 2
+0444: E6 04    | inc [0x04]
+0446: 88       | dey              // Loop until word counter is zero
+0447: D0 F6    | bne _boot_xferloop
+0449: A5 04    | lda [0x04]       // If bootstrap address pointer wraps around, do boot
+044B: F0 E0    | beq _boot_doboot
+044D: E6 02    | inc [0x02]       // Read next sector
+044F: 4C 16 04 | jmp _boot_readsector
+	
+	
