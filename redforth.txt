@@ -1,5 +1,9 @@
 <redforth.img>
 
+// S stack is used for the FORTH value stack
+// R stack is used for the FORTH call stack
+// I points to the list of command addresses executing
+
 0000: -- --    |
 0002: -- --    |
 0004: -- --    |
@@ -31,37 +35,184 @@ _start:
 0515: EF 06    | mmu 0x06
 0517: 4C 56 1D | jmp _main   // Jump to main
 
-051A:                               00 44 4F 43 4F 4E
-0520: 00 00 00 00 DC B5 00 48 2B 02 00 44 4F 56 41 52
-0530: 00 00 24 05 
+// Push next operation, return
+051A: 00
+_ascii_DOCON:  | "DOCON"
+051B: 44 4F 43 4F 4E 00 00 00 00
+0524: DC       | tix         // Copy call list to X
+0525: B5 00    | lda (X+0x00)// Load A with next call address
+0527: 48       | pha         // Push call address to value stack
+0528: 2B       | rli         // Pop call list from call stack and continue
+0529: 02       | nxt
 
-0534: DC       | tix         // Push I to S
+// Push current state, return
+052A: 00 
+_ascii_DOVAR:  | "DOVAR"
+052B: 44 4F 56 41 52 00 00 24 05
+_ent_dovar:
+0534: DC       | tix         // Push call list value
 0535: DA       | phx
-0536: 2B       | rli         // Pop I from R
-0537: 02       | nxt
-0538: 00 44 4F 44 4F 45 53 00
-0540: 00 34 05 3B DA 02 00 28 6C 69 74 29 00 00 43 05
+0536: 2B       | rli         // Pop call list and continue
+0537: 02       | nxt         
 
-_enter:
+// Pop return location and push value
+0538: 00
+_ascii_DODOES: | "DODOES"
+0539: 44 4F 44 4F 45 53 00 00 34 05
+0543: 3B       | rlx         // Pop return address, push value
+0544: DA       | phx
+0545: 02       | nxt
+
+// Push next operation, continue
+0546: 00
+_ascii_lit:    | "(lit)"
+0547: 28 6C 69 74 29 00 00 43 05
+_ent_lit:
 0550: 42       | nxa         // A = [0x1D59] = 0, I += 2
-0551: 48       | pha         // Push A = 0
+0551: 48       | pha         // Push A(0x1D59) = 0
 0552: 02       | nxt         // PC = [0x1D5B] = 0x77F, I += 2
-0553: 00 45 58 49 54 00 00 50 05 2B 02 00 28
-0560: 62 72 61 6E 63 68 29 00 00 5C 05 42 AA 5C 02 00
-0570: 28 3F 62 72 61 6E 63 68 29 00 00 6B 05 68 42 D0
-0580: 02 AA 5C 02 00 28 64 6F 29 00 00 7D 05 42 A3 02
-0590: 4B 68 38 E3 00 4B 68 02 00 28 3F 64 6F 29 00 00
-05A0: 8D 05 42 AA A3 02 4B 68 38 E3 00 F0 03 4B 68 02
-05B0: 6B 68 5C 02 00 28 6C 6F 6F 70 29 00 00 A2 05 42
-05C0: AA A7 00 1A 47 00 89 00 80 D0 01 5C A7 00 1A 87
-05D0: 00 02 00 28 2B 6C 6F 6F 70 29 00 00 BF 05 42 AA
-05E0: A3 00 18 67 00 47 00 89 00 80 D0 01 5C 18 68 67
-05F0: 00 87 00 02 00 28 6C 65 61 76 65 29 00 00 DE 05
-0600: 6B 6B 42 A8 B6 00 5C 8A 02 00 55 4E 4C 4F 4F 50
-0610: 00 00 00 06 6B 6B 02 00 49 00 00 14 06 A7 00 18
-0620: 67 02 48 02 00 4A 00 00 1D 06 A7 04 18 67 06 48
-0630: 02 00 45 58 45 43 55 54 45 00 00 2A 06 FA CA DA
-0640: 60 00 44 55 50 00 00 3D 06 A3 00 48 02 00 3F 44
+
+// Return
+0553: 00
+_ascii_EXIT:   | "EXIT"
+0554: 45 58 49 54 00 00 50 05
+055C: 2B       | rli
+055D: 02       | nxt 
+
+// Jump to new call list given by next value
+055E: 00
+_ascii_branch: | "(branch)"
+055F: 28 62 72 61 6E 63 68 29 00 00 5C 05
+056B: 42       | nxa
+056C: AA       | tax
+056D: 5C       | txi
+056E: 02       | nxt
+
+// Pop value, if zero jump to new call list given by next value
+056F: 00
+_ascii_qbranch:| "(?branch)"
+0570: 28 3F 62 72 61 6E 63 68 29 00 00 6B 05 
+057D: 68       | pla
+057E: 42       | nxa
+057F: D0 02    | bne 0x02
+0581: AA       | tax
+0582: 5C       | txi
+0583: 02       | nxt
+
+0584: 00
+_ascii_do:     | "(do)"
+0585: 28 64 6F 29 00 00 7D 05
+058D: 42       | nxa
+058E: A3 02    | lda [S+0x02]
+0590: 4B       | rha
+0591: 68       | pla
+0592: 38       | sec
+0593: E3 00    | sbc [S+0x03]
+0595: 4B       | rha
+0596: 68       | pla
+0597: 02       | nxt
+
+0598: 00 
+_ascii_qdo:    | "(?do)"
+0599: 28 3F 64 6F 29 00 00 8D 05
+05A2: 42       | nxa
+05A3: AA       | tax
+05A4: A3 02    | lda [S+0x02]
+05A6: 4B       | rha
+05A7: 68       | pla
+05A8: 38       | sec
+05A9: E3 00    | sbc [S+0x03]
+05AB: F0 03    | beq _br_qdo_zero
+05AD: 4B       | rha
+05AE: 68       | pla
+05AF: 02       | nxt
+_br_loop_zero:
+05B0: 6B       | rla
+05B1: 68       | pla
+05B2: 5C       | txi
+05B3: 02       | nxt
+
+05B4: 00
+_ascii_loop:   | "(loop)"
+05B5: 28 6C 6F 6F 70 29 00 00 A2 05
+05BF: 42       | nxa
+05C0: AA       | tax
+05C1: A7 00    | lda [R+0x00]
+05C3: 1A       | inc A
+05C4: 47 00    | eor [R+0x00]
+05C6: 89 00 80 | bit 0x8000
+05C9: D0 01    | bne _br_qloop_nzero
+05CB: 5C       | txi
+_br_qloop_nzero:
+05CC: A7 00    | lda [R+0x00]
+05CE: 1A       | inc A
+05CF: 87 00    | sta [R+0x00] 
+05D1: 02       | nxt
+
+05D2: 00
+_ascii_ploop:  | "(+loop)"
+05D3: 28 2B 6C 6F 6F 70 29 00 00 BF 05
+05DE: 42       | nxa
+05DF: AA       | tax
+05E0: A3 00    | lda [S+0x00]
+05E2: 18       | clc
+05E3: 67 00    | adc [R+0x00]
+05E4: 47 00    | eor [R+0x00]
+05E6: 89 00 80 | bit 0x8000
+05E9: D0 01    | bne 0x01
+05EB: 5C       | txi
+05EC: 18       | clc
+05ED: 68       | pla
+05EE: 67 00    | adc [R+0x00]
+05F1: 87 00    | sta [R+0x00]
+05F3: 02       | nxt
+
+05F4: 00
+_ascii_leave:  | "(leave)"
+05F5: 28 6C 65 61 76 65 29 00 00 DE 05
+0600: 6B       | pla
+0601: 6B       | pla
+0602: 42       | nxa
+0603: A8       | tay
+0604: B6 00    | ldx (Y+0x00)
+0606: 5C       | txi
+0607: 8A       | txa
+0608: 02       | nxt
+
+0609: 00 
+_ascii_UNLOOP: | "UNLOOP"
+060A: 55 4E 4C 4F 4F 50 00 00 00 06
+0614: 6B       | pla
+0615: 6B       | pla
+0616: 02       | nxt
+
+// Pushes the sum of the next two return locations
+0617: 00
+_ascii_I:      | "I"
+0618: 49 00 00 14 06 
+061D: A7 00    | lda [R+0x00]// A = return location
+061F: 18       | clc
+0620: 67 02    | adc [R+0x02]// Add 2nd level return location
+0622: 48       | pha         // Push value
+0623: 02       | nxt
+
+// Pushes the sum of the second and third return locations
+0624: 00
+_ascii_J:      | "J"
+0625: 4A 00 00 1D 06 
+062A: A7 04    | lda [R+0x04]
+062C: 18       | clc
+062D: 67 06    | adc [R+0x06]
+062F: 48       | pha
+0630: 02       | nxt
+
+0631: 00
+_ascii_EXECUTE:| "EXECUTE" 
+0632: 45 58 45 43 55 54 45 00 00 2A 06 
+063D: FA       | plx
+063E: CA       | dex
+063F: DA       | phx
+0640: 60       | rts 00 44 55 50 00 00 3D 06 A3 00 48 02 00 3F 44
 0650: 55 50 00 00 49 06 A3 00 F0 01 48 02 00 32 44 55
 0660: 50 00 00 56 06 A3 02 48 A3 02 48 02 00 44 52 4F
 0670: 50 00 00 65 06 68 02 00 32 44 52 4F 50 00 00 75
@@ -76,22 +227,96 @@ _enter:
 0700: 5A DA 02 00 4E 49 50 00 00 FC 06 68 FA 48 02 00
 0710: 54 55 43 4B 00 00 0B 07 68 FA 48 DA 48 02 00 3E
 0720: 52 00 00 18 07 68 4B 02 00 52 3E 00 00 25 07 6B
-0730: 48 02 00 21 00 00 2F 07 FA 68 95 00 02 00 2B 21
-0740: 00 00 38 07 FA 68 18 75 00 95 00 02 00 2D 21 00
-0750: 00 44 07 FA 38 B5 00 E3 00 95 00 68 02 00 43 21
-0760: 00 00 53 07 FA 68 E2 20 95 00 C2 20 02 00 40 00
-0770: 00 64 07 FA B5 00 48 02 00 43 40 00 00 73 07 
+0730: 48 02
 
+// Store value at S[1] to address S[0], pop both
+0732: 00 
+_ascii_exclamation: | "!"
+0733: 21 00 00 2F 07
+0738: FA       | plx         // Pop X
+0739: 68       | pla         // Pop A
+073A: 95 00    | sta (X+0x00) // Store A to [X]
+073C: 02       | nxt         // PC = [0x1D61] = 0x550, I += 2
+
+// Add value S[1] to value at address S[0], pop both
+073D: 00
+_ascii_pexclamation: | "+!"
+073E: 2B 21 00 00 38 07
+0744: FA       | plx
+0745: 68       | pla 
+0746: 18       | clc
+0747: 75 00    | adc (X+0x00)
+0749: 95 00    | sta (X+0x00)
+074B: 02       | nxt
+
+// Subtract value S[1] to value at address S[0], pop both
+074C: 00 
+_ascii_nexclamation: | "-!"
+074D: 2D 21 00 00 44 07
+0753: FA       | plx
+0754: 38       | sec
+0755: B5 00    | lda (X+0x00)
+0757: E3 00    | sbc [S+0x00]
+0759: 95 00    | sta (X+0x00)
+075B: 68       | pla
+075C: 02       | nxt
+
+// Store 8-bit value at S[1] to address S[0], pop both
+075D: 00
+_ascii_Cexclamation: | "C!"
+075E: 43 21 00 00 53 07 
+0764: FA       | plx
+0765: 68       | pla
+0766: E2 20    | sep 0x20
+0768: 95 00    | sta (X+0x00)
+076A: C2 20    | rep 0x20
+076C: 02       | nxt 
+
+// Pop variable, then push its value
+076D: 00
+_ascii_at:     | "@"
+076E: 40 00 00 64 07
+0773: FA       | plx
+0774: B5 00    | lda [X+0x00]
+0776: 48       | pha
+0777: 02       | nxt
+
+// Pop variable, then push its 8-bit value
+0778: 00
+_ascii_Cat:    | "C@"
+0779: 43 40 00 00 73 07 
 077F: FA       | plx         // Pop X = A = [0x1D59]
 0780: E2 20    | sep 0x20    // Set M flag
-0782: B5 00    | lda X[0x00] // Load A and zero extend
+0782: B5 00    | lda [X+0x00] // Load A[0] and zero extend
 0784: 8F       | zea
 0785: C2 20    | rep 0x20    // Clear M flag
 0787: 48       | pha         // Push A
-0788: 02       | nxt         // PC = [0x1D5D] = 19D8, I += 2
-0789:                            00 2B 00 00 7F 07 68
-0790: 18 63 00 83 00 02 00 2D 00 00 8F 07 A3 02 38 E3
-07A0: 00 83 02 68 02 00 4D 2A 00 00 9C 07 68 BA 38 1F
+0788: 02       | nxt
+
+// Pops a value, then adds it to the value on top of the stack
+0789: 00
+_ascii_plus:   | "+"
+078A: 2B 00 00 7F 07 
+078F: 68       | pla
+0790: 18       | clc
+0791: 63 00    | adc [S+0x00]
+0793: 83 00    | sta [S+0x00]
+0795: 02       | nxt
+
+// Subtracts S[0] from S[1], pops both, and pushes the result
+0796: 00
+_ascii_minus:  | "-"
+0797: 2D 00 00 8F 07
+079C: A3 02    | lda [S+0x02]
+079E: 38       | sec
+079F: E3 00    | sbc [S+0x00]
+07A1: 83 02    | sta [S+0x02]
+07A3: 68       | pla
+07A4: 02       | nxt
+
+07A5: 00
+_ascii_Mstar:  | "M*"
+07A6: 4D 2A 00 00 9C 07 68 BA 38 1F
 07B0: 00 FA 48 DF 02 00 55 4D 2A 00 00 AC 07 68 BA 18
 07C0: 1F 00 FA 48 DF 02 00 2A 00 00 BD 07 68 BA 38 1F
 07D0: 00 FA 48 02 00 55 2A 00 00 CC 07 68 BA 18 1F 00
@@ -384,7 +609,7 @@ _enter:
 19C0: 07 86 08 50 05 02 03 38 07 5C 05 00 44 49 53 4B
 19D0: 41 44 44 52 00 00 B2 19 
 
-19D8: 22 34 05 | ent 0x0534  // I = 0x19DB, PC = 0x534
+19D8: 22 34 05 | ent _ent_dovar  // RHI(0x1D5F), I = 0x19DB, PC = 0x534
 
 19DB:                                  02 00 00 44 49
 19E0: 53 4B 4E 41 4D 45 22 00 00 D8 19 22 50 05 22 00
@@ -444,12 +669,15 @@ _enter:
 1D40: 00 8F 07 BF 05 29 1D 14 06 75 06 5C 05 00 43 4F
 1D50: 4C 44 00 00 0C 1D 
 _main:
-1D56: 22 50 05 | ent _enter  // I = 1D59, jmp 0x550
+1D56: 22 50 05 | ent _ent_lit  // RHI(?), I = 1D59, jmp 0x550
+
+// Shell is actually a precompiled forth program!?!?
 1D59: 00 00    | ?
-1D5B: 7F 07    | ?
+1D5B: 7F 07    | _func_Cat         // C@
 1D5D: D8 19    | ?
-1D5F:                                              38
-1D60: 07 50 05 01 00 7F 07 C1 0D 38 07 C7 0E C7 0E E2
+1D5F: 38 07    | _func_exclamation // !
+1D61: 50 05    | _ent_lit          // (lit)
+1D63: 01 00 7F 07 C1 0D 38 07 C7 0E C7 0E E2
 1D70: 0F 4D 69 6E 65 4F 53 20 56 31 2E 31 20 49 6E 69
 1D80: 74 69 61 6C 69 7A 65 64 00 C7 0E 0D 11 EF 10 38
 1D90: 07 55 11 5E 10 E2 0F 62 79 74 65 73 20 66 72 65
