@@ -10,6 +10,7 @@ module EloDiskDriveRAM(Address, Data, ReadRedbus, WriteRedbus, Enable, DriveCloc
 	reg [7:0] sectorBuf[0:127];
 	reg [15:0] sectorNum;
 	reg [7:0] diskCommand;
+	reg runDiskCommand;
 	
 	reg [6:0] sectorWriteOffset;
 	reg [7:0] sectorWriteData;
@@ -33,6 +34,7 @@ module EloDiskDriveRAM(Address, Data, ReadRedbus, WriteRedbus, Enable, DriveCloc
 		end
 		sectorNum <= 0;
 		diskCommand <= 0;
+		runDiskCommand <= 0;
 		
 		diskname[0] <= 8'h46;
 		diskname[1] <= 8'h4F;
@@ -42,9 +44,17 @@ module EloDiskDriveRAM(Address, Data, ReadRedbus, WriteRedbus, Enable, DriveCloc
 	end
 	
 	always @(negedge DriveClock) begin
-		if (WriteRedbus && Address < 128) begin
-			sectorBuf[sectorWriteOffset] = sectorWriteData;
-		end else if (runDiskCommand) begin
+		if (WriteRedbus) begin
+			if (Address < 128) sectorBuf[sectorWriteOffset] = Data;
+			else begin
+				case(Address)
+				128: sectorNum[7:0] = Data;
+				129: sectorNum[15:8] = Data;
+				
+				endcase
+			end
+		end
+		if (runDiskCommand) begin
 			case(diskCommand)
 			1: begin // Read disk name
 				for(i=0;i<128;i=i+1) begin

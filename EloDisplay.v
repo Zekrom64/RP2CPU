@@ -1,7 +1,9 @@
-module EloDisplay(Address, Data, ReadRedbus, WriteRedbus, Enable, CursorEnable, DisplayAddr, DisplayChar);
+module EloDisplay(Address, Data, ReadRedbus, WriteRedbus, Enable, DisplayClock, CursorEnable, DisplayAddr, DisplayChar, KBIn, KBWrite);
 
 	input [15:0] Address;
-	input [7:0] Data;
+	inout [7:0] Data;
+	assign Data = ReadRedbus && Enable ? registers[Address] : 8'bZZZZZZZZ;
+	
 	input ReadRedbus;
 	input WriteRedbus;
 	input Enable;
@@ -42,8 +44,33 @@ module EloDisplay(Address, Data, ReadRedbus, WriteRedbus, Enable, CursorEnable, 
 		*/
 	end
 	
-	always @(posedge WriteRedbus) begin
-		registers[Address] = Data;
+	input KBWrite;
+	input [7:0] KBIn;
+	
+	always @(posedge KBWrite) begin
+		
+	end
+	
+	wire blitCmdRun;
+	wor blitCmdFinish;
+	
+	AsyncLatch blitCmdLatch(
+		.Set(WriteRedbus && Enable && Address == 7),
+		.Reset(blitCmdFinish),
+		.Flag(blitCmdRun)
+	);
+	
+	input DisplayClock;
+	
+	always @(posedge DisplayClock) begin
+		if (Enable && WriteRedbus) registers[Address] = Data;
+		if (blitCmdRun) begin
+			case (registers[7])
+			1:;
+			2:;
+			3:;
+			endcase
+		end
 	end
 
 endmodule

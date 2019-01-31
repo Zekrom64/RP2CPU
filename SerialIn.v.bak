@@ -1,0 +1,21 @@
+module SerialIn(SerialReady, SerialData, SerialClock, DataOut, DataWrite);
+	
+	input SerialReady, SerialData, SerialClock;
+	output reg [7:0] DataOut;
+	output DataWrite;
+	
+	reg [2:0] dataCounter;
+	
+	AsyncLatch writeLatch(
+		.Set(),
+		.Reset(!SerialReady),
+		.Flag(DataWrite)
+	);
+	
+	always @(negedge SerialClock) begin
+		if (SerialReady) begin
+			
+		end
+	end
+
+endmodule

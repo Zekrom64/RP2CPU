@@ -3,7 +3,7 @@
 0000: -- --    | // Boot disk drive redbus ID
 0002: -- --    | // Sector counter
 0004: -- --    | // Bootstrap address pointer
-
+...
 0400: 18       | clc              // Clear emulation flag
 0401: FB       | xce
 0402: A5 00    | lda [0x00]       // Map device in [0x00] to redbus window

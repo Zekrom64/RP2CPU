@@ -41,6 +41,7 @@ module RP2CPU(Clock, Reset, PixelOut, HSync, VSync);
 	);
 	*/
 	
+	/*
 	EloDiskDriveRAM diskDrive(
 		.Address(Address),
 		.Data(Data),
@@ -48,8 +49,9 @@ module RP2CPU(Clock, Reset, PixelOut, HSync, VSync);
 		.WriteRedbus(Write),
 		.Enable(RedbusDevice == 2),
 		
-		.DiskClock(Clock)
+		.DriveClock(Clock)
 	);
+	*/
 	
 	wire [11:0] displayAddr;
 	wire displayCursor;
