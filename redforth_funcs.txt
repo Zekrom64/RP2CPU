@@ -1,0 +1,136 @@
+Notes:
+	Stack indices are into the stack from the top
+	Words are 16-bit, 2-byte numbers (signed unless otherwise noted)
+	Characters are 8-bit, 1-byte numbers, stored on the stack as words
+	Double words are 32-bit, 4-byte numbers, upper bits above
+	Unless specified as characters or double words, all values are words
+	Multiplied double words push the high bits first
+	Divided double words push the low bits first
+	FORTH words in parenthesis *can* be used regularly but will most likely just crash
+		They are only normally used in compiled programs
+
+ Addr | Name      | Function
+===============================================================================
+ 0524 | DOCON     | Push next word as constant, return
+ 0534 | DOVAR     | Push address of next word, return
+ 0543 | DODOES    | Pop return list address, push value, continue
+ 0550 | (lit)     | Push next word, skip over and continue
+ 055C | EXIT      | Return
+ 056B | (branch)  | Jump to next word as call list address
+ 057D | (?branch) | Pop value, if zero execute as (branch), else skip next word
+ 058D | (do)      | ?
+ 05A2 | (?do)     | ?
+ 05BF | (loop)    | ?
+ 05DE | (+loop)   | ?
+ 05F5 | (leave)   | Pop loop variables and jump to call list address at address of next word
+ 0614 | UNLOOP    | Pop loop variables and continue
+ 061D | I         | Push value of inner loop counter
+ 062A | J         | Push value of outer loop counter
+ 063D | EXECUTE   | Pops an address and does a raw assembly jump to it
+ 0649 | DUP       | Pushes a copy of the top value
+ 0656 | ?DUP      | If top value is not zero, pushes a copy of it
+ 0665 | 2DUP      | Pushes a copy of the top two values
+ 0675 | DROP      | Pops a value and discards it
+ 0681 | 2DROP     | Pops two values and discards them
+ 068D | SWAP      | Swaps the top two values
+ 069B | PICK      | Pops a value, indexes into the stack with it, pushes the indexed value
+ 06BE | OVER      | Pushes a copy of the value below the top
+ 06C1 | 2OVER     | Pushes a copy of the value two elements into the stack
+ 06CD | ROT       | Rotates the top 3 values once into the stack
+ 06DE | 2SWAP     | Swaps two values on top with the two values below those
+ 06FC | -ROT      | Rotates the top 3 values once out of the stack
+ 070B | NIP       | Removes the value below the top
+ 0718 | TUCK      | Inserts a copy of the top value two values deep into the stack
+ 0725 | >R        | Pops a value and pushes it to the call stack
+ 072F | <R        | Pops the call stack and pushes the value
+ 0738 | !         | Writes the word S[1] to address S[0], pops both
+ 0744 | +!        | Adds word S[1] to memory at address S[0], pops both
+ 0753 | -!        | Subtracts word S[1] from memory at address S[0], pops both
+ 0764 | C!        | Writes character S[1] to address S[0], pops both
+ 0773 | @         | Pops an address and pushes the word at that address
+ 077F | C@        | Pops an address and pushes the caracter at that address
+ 078F | +         | Pops two values and pushes their sum
+ 079C | -         | Pops two values and pushes the bottom minus the top
+ 07AC | M*        | Multiplies two signed numbers, pops both, and pushes their double word product
+ 07BD | UM*       | Multiplies two unsigned numbers, pops both, and pushes their double word product
+ 07CC | *         | Multiplies two signed numbers, pops both, and pushes their word product
+ 07DB | U*        | Multiplies two unsigned numbers, pops both, and pushes their word product
+ 07EE | SM/REM    | Signed divides the bottom double word by the top word, pops both, pushes the remainder followed by quotient
+ 0805 | FM/MOD    | ? (Similar to SM/REM but does processing on results)
+ 0832 | UM/MOD    | Unsigned divides the bottom double word by the top word, pops both, pushes the remainder followed by quotient
+ 0845 | 2*        | Multiplies the top value by two
+ 0851 | 2/        | Divides the top value by two
+ 0860 | U>>       | Pops the offset, then logical right-shifts the new top by the offset
+ 0870 | <<        | Pops the offset, then left-shifts the new top by the offset
+ 0886 | AND       | Pops two values, pushes the bitwise AND of them
+ 0893 | OR        | Pops two values, pushes the bitwise OR of them
+ 08A1 | XOR       | Pops two values, pushes the bitwise XOR of them
+ 08B2 | INVERT    | Bitwise inverts the top
+ 08C3 | NEGATE    | Negates the top
+ 08D1 | 1+        | Increments the top
+ 08DC | 1-        | Decrements the top
+ 08E8 | SP@       | Pushes the value of the stack pointer (the value before the push)
+ 08F3 | SP!       | Pops a value into the stack pointer
+ 08FE | RP@       | Pushes the value of the call stack pointer
+ 0909 | RP!       | Sets the value of the call stack pointer
+ 0913 | 0=        | Pops a value, pushes TRUE if equal to 0, FALSE otherwise
+ 0926 | 0<>       | Pops a value, pushes TRUE if not equal to 0, FALSE otherwise
+ 0948 | <>        | Pops two values, pushes TRUE if not equal, FALSE otherwise
+ 095D | <         | Pops two values, pushes TRUE if the top is greater, FALSE otherwise
+ 0974 | >         | Pops two values, pushes TRUE if the top is less, FALSE otherwise
+ 098A | U<        | Pops two unsigned values, pushes TRUE if the top is greater, FALSE otherwise
+ 09A2 | U>        | Pops two unsigned values, pushes TRUE if the top is less, FALSE otherwise
+ 09B8 | <=        | Pops two values, pushes TRUE if the top is greater or equal, FALSE otherwise
+ 09CE | >=        | Pops two values, pushes TRUE if the top is less or equal, FALSE otherwise
+ 09E5 | =         | Pops two values, pushes TRUE if equal, FALSE otherwise
+ 09FD | CELL      | Pushes the size of a numeric cell (2)
+ 0A0B | CELLS     | Pops a number, pushes the size of memory for this number of cells
+ 0A18 | MAX       | Pops two numbers, pushes the maximum value
+ 0A28 | MIN       | Pops two numbers, pushes the minimum value
+ 0A58 | FILL      | Fills S[1] bytes of memory at S[2] with S[0], pops all 3 values
+ 0A76 | MEMCMP    | Does a C-style memcmp between S[0] bytes at S[2] and S[1], pops values and pushes result
+ 0AA9 | STRLEN    | Pops a string address, pushes the number of characters in the string
+ 0ACD | RSTRLEN   | Identical to STRLEN, but iterates in reverse
+ 0AEF | TRUE      | Pushes a TRUE value
+ 0AFE | FALSE     | Pushes a FALSE value
+ 0B0F | SCRATCH   | ? (Pushes 0x0040)
+ 0B1C | TIB       | ? (Pushes 0x0080)
+ 0B2B | RADIX     | Pushes the address of the RADIX variable for string-number conversion
+ 0B37 | BL        | Pushes the space character
+ 0B46 | UITOA     | Pops and unsigned number and pushes a string address of the stringified number
+ 0B98 | WORD      | ?
+ 0C3B | SPLIT     | Splits string S[1] by character S[0], pops both values, pushes the address of the next occurence, then the address of the first occurence
+ 0C8F | STRCMP    | Performs a C-style strcmp between S[1] and S[0], pops both and pushes result
+ 0CA1 | ISNUM     |
+ 
+ 0DA5 | TICK      | Pauses until the next 50ms tick
+ 0DB0 | RBP!      | Pops a value and sets the selected Redbus device to it
+ 0DC1 | TERMADDR  | Gets the address of the TERMADDR variable, selecting the active terminal
+ 0DCF | PAGE      | Clears the active terminal
+ 0E37 | SCROLL    | Scrolls the active terminal by one line
+ 0EC7 | CR        | Moves the cursor to a new line, possibly scrolling the terminal
+ 0F07 | EMIT      | Pops a character and prints it
+ 0F55 | BS        | Moves the cursor left one, and erases the character under it
+ 0F7D | KEY?      | Pushes TRUE if there is a character in the keyboard buffer, FALSE otherwise
+ 0F9E | KEY       | Pushes the next character in the keyboard buffer, waiting until one is avaiable
+ 0FC5 | AT-XY     | Sets the cursor position to (S[1], S[0]), pops both values
+ 0FE2 | (.")      | Prints a null terminated string next in the call list, continues after it
+ 1007 | SPACE     | Prints a single space
+ 1017 | TYPE      | Pops a string address and prints the string
+ 1034 | .         | Pops a number off the stack and prints it
+ 105E | U.        | Pops an unsigned number off the stack and prints it
+ 1070 | /MOD      | Pops two numbers and pushes the remainder, then the quotient of the bottom divided by top
+ 107C | /         | Pops two numbers and pushes the remainder (?@#!) of the bottom divided by top
+ 1090 | MOD       | Pops two numbers and pushes the quotient (?@#!) of the bottom divided by top
+ 10A1 | ABORT     | Clears the stack and invokes QUIT
+ 10B3 | TIBPTR    | Pushes the address of the TIB variable
+ 10C2 | VOCAB     | Pushes the address directly after the last FORTH word's header
+ 10D2 | (HERE)    | Pushes a pointer to the HERE address variable
+ 10E0 | HERE      | Pushes the HERE address
+ 10EF | TOP       | Pushes the address of the TOP variable
+ 10FE | STATE     | Pushes the address of the STATE variable
+ 110D | PROBE     | ?
+ 1155 | FREE      | ?
+ 116A | ALLOT     | Pops a number and allocates that number of byte of memory, pushes the pointer
+ 
+ 

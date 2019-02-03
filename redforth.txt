@@ -4,6 +4,49 @@
 // R stack is used for the FORTH call stack
 // I points to the list of command addresses executing
 
+// FORTH words are packed next to each other with no padding
+//     in memory, making it easy to iterate the entire list
+//     of words. Words start with a header containing the name
+//     and the address of the previous word's entry point. The
+//     entry point is always directly after the header. Headers
+//     are structured as:
+//     
+//     00 <name> 00 00 <address>
+
+// FORTH words always have 'native' entry points with 65EL02
+//    machine code. To go to the next word in the program, the
+//    NXT instruction jumps the next word's native entry point
+//    in the call list pointed to by I. Some words are implemented
+//    as precompiled FORTH programs and start with ENT with the
+//    address of the first word's entry point. This causes the
+//    CPU to push the call list pointer on the call stack, set it
+//    to the address after the ENT instruction (which is a list of
+//    entry points) and the word called by ENT will then jump to the
+//    next entry point in the list following the ENT.
+//    
+//    Example:
+//
+//        Raw FORTH:
+//            : FOUR
+//            2 DUP +
+//            ;
+//
+//        Precompiled FORTH:
+//        // Header
+//        ----: 00
+//        _ascii_FOUR:   | "FOUR"
+//        ----: 46 4F 55 52 00 00 -- --
+//        // Entry point
+//        _func_FOUR:
+//        // Jump to entry point for '(lit)', execute following words as FORTH program
+//        ----: 22 50 05 | ent _func_lit // (lit)
+//        // Precompiled FORTH program
+//        ----: 02 00    | 0x0002        //     0x0002
+//        ----: 49 06    | _func_DUP     // DUP
+//        ----: 8F 07    | _func_plus    // +
+//        ----: 5C 05    | _func_EXIT    // EXIT
+// 
+
 _start:
 0500: 18       | clc         // Clear emulation flag
 0501: FB       | xce
@@ -22,6 +65,7 @@ _start:
 051A: 00
 _ascii_DOCON:  | "DOCON"
 051B: 44 4F 43 4F 4E 00 00 00 00
+_func_DOCON:
 0524: DC       | tix         // Copy call list to X
 0525: B5 00    | lda (X+0x00)// Load A with next call address
 0527: 48       | pha         // Push call address to value stack
@@ -33,7 +77,7 @@ _ascii_DOCON:  | "DOCON"
 _ascii_DOVAR:  | "DOVAR"
 052B: 44 4F 56 41 52 00 00 24 05
 _func_DOVAR:
-0534: DC       | tix         // Push call list value
+0534: DC       | tix         // Push next address in call list
 0535: DA       | phx
 0536: 2B       | rli         // Pop call list and continue
 0537: 02       | nxt         
@@ -88,14 +132,14 @@ _func_qbranch:
 0584: 00
 _ascii_do:     | "(do)"
 0585: 28 64 6F 29 00 00 7D 05
-058D: 42       | nxa
-058E: A3 02    | lda [S+0x02]
-0590: 4B       | rha
-0591: 68       | pla
+058D: 42       | nxa         // Next word into A
+058E: A3 02    | lda [S+0x02]// Load A with S[1]
+0590: 4B       | rha         // Push A to call stack
+0591: 68       | pla         // Pop S[0]
 0592: 38       | sec
 0593: E3 00    | sbc [S+0x03]
-0595: 4B       | rha
-0596: 68       | pla
+0595: 4B       | rha         // Push 
+0596: 68       | pla         // Pop
 0597: 02       | nxt
 
 0598: 00 
@@ -153,26 +197,28 @@ _ascii_ploop:  | "(+loop)"
 05F1: 87 00    | sta [R+0x00]
 05F3: 02       | nxt
 
+// Pop loop variables and exit loop and end
 05F4: 00
 _ascii_leave:  | "(leave)"
 05F5: 28 6C 65 61 76 65 29 00 00 DE 05
-0600: 6B       | pla
+0600: 6B       | pla         // Pop twice
 0601: 6B       | pla
-0602: 42       | nxa
+0602: 42       | nxa         // Next word
 0603: A8       | tay
-0604: B6 00    | ldx (Y+0x00)
+0604: B6 00    | ldx (Y+0x00)// Jump to call list at address of next word
 0606: 5C       | txi
 0607: 8A       | txa
-0608: 02       | nxt
+0608: 02       | nxt         // Continue
 
+// Cleanup loop variables
 0609: 00 
 _ascii_UNLOOP: | "UNLOOP"
 060A: 55 4E 4C 4F 4F 50 00 00 00 06
-0614: 6B       | pla
+0614: 6B       | pla         // Pop twice and continue
 0615: 6B       | pla
 0616: 02       | nxt
 
-// Pushes the sum of the next two return locations
+// Pushes the value of the loop counter
 0617: 00
 _ascii_I:      | "I"
 0618: 49 00 00 14 06 
@@ -182,7 +228,7 @@ _ascii_I:      | "I"
 0622: 48       | pha         // Push value
 0623: 02       | nxt
 
-// Pushes the sum of the second and third return locations
+// Pushes the value of the outer loop counter
 0624: 00
 _ascii_J:      | "J"
 0625: 4A 00 00 1D 06 
@@ -279,11 +325,12 @@ _ascii_PICK:   | "PICK
 06AA: 00 
 _ascii_OVER:   | "OVER"
 06AB: 4F 56 45 52 00 00 9B 06
+_func_OVER:
 06B3: A3 02    | lda [S+0x02]
 06B5: 48       | pha
 06B6: 02       | nxt
 
-// Reads the value 2 values deep into the stack, and pushes it
+// Reads the value 3 values deep into the stack, and pushes it
 06B7: 00
 _ascii_2OVER:  | "2OVER"
 06B8: 32 4F 56 45 52 00 00 B3 06
@@ -326,6 +373,7 @@ _ascii_2SWAP:  | "2SWAP"
 06F3: 00
 _ascii_nROT:   | "-ROT"
 06F4: 2D 52 4F 54 00 00 DE 06 
+_func_nROT:
 06FC: 68       | pla
 06FD: FA       | plx
 06FE: 7A       | ply
@@ -457,6 +505,7 @@ _func_plus:
 0796: 00
 _ascii_minus:  | "-"
 0797: 2D 00 00 8F 07
+_func_minus:
 079C: A3 02    | lda [S+0x02]
 079E: 38       | sec
 079F: E3 00    | sbc [S+0x00]
@@ -464,6 +513,8 @@ _ascii_minus:  | "-"
 07A3: 68       | pla
 07A4: 02       | nxt
 
+// Performs an extended signed multiplication on two values poped from the stack
+// The lower bits are pushed first, followed by the upper bits
 07A5: 00
 _ascii_Mstar:  | "M*"
 07A6: 4D 2A 00 00 9C 07
@@ -477,6 +528,7 @@ _func_Mstar:
 07B3: DF       | phd
 07B4: 02       | nxt
 
+// Unsigned version of "M*"
 07B5: 00
 _ascii_UMstar: | "UM*"
 07B6: 55 4D 2A 00 00 AC 07
@@ -489,6 +541,7 @@ _ascii_UMstar: | "UM*"
 07C4: DF       | phd
 07C5: 02       | nxt
 
+// Pops two values off the stack, signed multiplies them, then pushes the result
 07C6: 00
 _ascii_star:   | "*"
 07C7: 2A 00 00 BD 07
@@ -500,6 +553,7 @@ _ascii_star:   | "*"
 07D2: 48       | pha
 07D3: 02       | nxt
 
+// Unsigned version of "*"
 07D4: 00
 _ascii_Ustar:  | "U*"
 07D5: 55 2A 00 00 CC 07
@@ -511,7 +565,7 @@ _ascii_Ustar:  | "U*"
 07E1: 48       | pha
 07E2: 02       | nxt
 
-// Divides double-word S[1:2] by S[0], pops 3 values, pushes the remainder and quotient
+// Signed divides double-word S[1:2] by S[0], pops 3 values, pushes the remainder then pushes the quotient
 07E3: 00
 _ascii_SMslashREM: | "SM/REM"
 07E4: 53 4D 2F 52 45 4D 00 00 DB 07
@@ -527,9 +581,11 @@ _ascii_SMslashREM: | "SM/REM"
 07F8: 48       | pha
 07F9: 02       | nxt
 
+
 07FA: 00
 _ascii_FMslashMOD: | "FM/MOD"
 07FB: 46 4D 2F 4D 4F 44 00 00 EE 07
+_func_FMslashMOD:
 0805: FA       | plx
 0806: CF       | pld
 0807: 68       | pla
@@ -545,7 +601,7 @@ _ascii_FMslashMOD: | "FM/MOD"
 0813: DA       | phx
 0814: 43 00    | eor [S+0x00]
 0816: 89 00 80 | bit 0x8000
-0818: F0 0A    | beq 0x0A
+0818: F0 0A    | beq 0x0A    // Branch ahead 10 if negative
 081B: 68       | pla
 081C: 18       | clc
 081D: 63 02    | adc [S+0x02]
@@ -553,12 +609,13 @@ _ascii_FMslashMOD: | "FM/MOD"
 0821: BA       | tsx
 0822: D6 00    | dec (X+0x00)
 0824: 02       | nxt
-0825: FA       | plx
+0825: FA       | plx         // Pop X and end
 0826: 02       | nxt
 
 0827: 00
 _ascii_UMslashMOD: | "UM/MOD"
 0828: 55 4D 2F 4D 4F 44 00 00 05 08
+_func_UMslashMOD:
 0832: FA       | plx
 0833: CF       | pld
 0834: 68       | pla
@@ -571,6 +628,7 @@ _ascii_UMslashMOD: | "UM/MOD"
 083C: 48       | pha
 083D: 02       | nxt
 
+// Multiplies the top value by 2
 083E: 00
 _ascii_2star:  | "2*"
 083F: 32 2A 00 00 32 08
@@ -580,6 +638,7 @@ _ascii_2star:  | "2*"
 0848: 48       | pha
 0849: 02       | nxt
 
+// Divides the top value by 2
 084A: 00
 _ascii_2slash: | "2/"
 084B: 32 2F 00 00 45 08
@@ -590,11 +649,12 @@ _ascii_2slash: | "2/"
 0856: 48       | pha
 0857: 02       | nxt
 
+// Pops a value, and unsigned right-shifts the new top of the stack by the value
 0858: 00
 _ascii_Ugtgt:  | "U>>"
 0859: 55 3E 3E 00 00 51 08
-0860: 7A       | ply
-0861: 68       | pla
+0860: 7A       | ply      // S[0] = Count
+0861: 68       | pla      // S[1] = Value
 0862: 18       | clc
 0863: 6A       | ror A
 0864: 88       | dey
@@ -602,6 +662,7 @@ _ascii_Ugtgt:  | "U>>"
 0867: 48       | pha
 0868: 02       | nxt
 
+// Pops a value, and left shifts the new top of the stack by the value
 0869: 00
 _ascii_ltlt:   | "<<"
 086A: 3C 3C 00 00 60 08
@@ -626,14 +687,17 @@ _func_AND:
 0889: 83 00    | sta [S+0x00]
 088B: 02       | nxt
 
+// Pops two values, pushes the bitwise OR of the values
 088C: 00
 _ascii_OR:     | "OR"
 088D: 4F 52 00 00 86 08
+_func_OR:
 0893: 68       | pla
 0894: 03 00    | ora [S+0x00]
 0896: 83 00    | sta [S+0x00]
 0898: 02       | nxt
 
+// Pops two values, pushes the bitwise XOR of the values
 0899: 00
 _ascii_XOR:    | "XOR"
 089A: 58 4F 52 00 00 93 08
@@ -642,6 +706,7 @@ _ascii_XOR:    | "XOR"
 08A4: 83 00    | sta [S+0x00]
 08A6: 02       | nxt
 
+// Pops a value and pushes the bitwise inverse of the value
 08A7: 00
 _ascii_INVERT: | "INVERT"
 08A8: 49 4E 56 45 52 54 00 00 A1 08
@@ -651,15 +716,18 @@ _func_INVERT:
 08B6: 48       | pha
 08B7: 02       | nxt
 
+// Pops a value and pushes the negated value
 08B8: 00
 _ascii_NEGATE: | "NEGATE"
 08B9: 4E 45 47 41 54 45 00 00 B2 08
+_func_NEGATE:
 08C3: 68       | pla
 08C4: 49 FF FF | xor 0xFFFF
 08C7: 1A       | inc A
 08C8: 48       | pha
 08C9: 02       | nxt
 
+// Increments the value on top of the stack
 08CA: 00
 _ascii_oneplus: | "1+"
 08CB: 31 2B 00 00 C3 08 
@@ -669,14 +737,17 @@ _func_oneplus:
 08D3: 48       | pha
 08D4: 02       | nxt
 
+// Decrements the value on top of the stack
 08D5: 00
 _ascii_oneminus: | "1-"
 08D6: 31 2D 00 00 D1 08
+_func_oneminus:
 08DC: 68       | pla
 08DD: 3A       | dec A
 08DE: 48       | pha
 08DF: 02       | nxt
 
+// Pushes the value of the stack pointer. This is the value before the push
 08E0: 00
 _ascii_SPat:   | "SP@"
 08E1: 53 50 40 00 00 DC 08
@@ -684,13 +755,16 @@ _ascii_SPat:   | "SP@"
 08E9: DA       | phx
 08EA: 02       | nxt
 
+// Pops a value and sets the stack pointer to that value
 08EB: 00
 _ascii_SPexclamation: | "SP!"
 08EC: 53 50 21 00 00 E8 08
+_func_SPexclamation:
 08F3: FA       | plx
 08F4: 9A       | txs
 08F5: 02       | nxt
 
+// Pushes the value of the R stack pointer
 08F6: 00
 _ascii_RPat:   | "RP@"
 08F7: 52 50 40 00 00 F3 08
@@ -698,9 +772,11 @@ _ascii_RPat:   | "RP@"
 08FF: DA       | phx
 0900: 02       | nxt
 
+// Pops a value and sets the R stack pointer to that value
 0901: 00
 _ascii_RPexclamation: | "RP!"
 0902: 52 50 21 00 00 FE 08
+_func_RPexclamation:
 0909: FA       | plx
 090A: 8B       | txr
 090B: 02       | nxt
@@ -733,6 +809,7 @@ _func_zeroltgt:
 092F: 00
 _ascii_zerolt: | "0<"
 0930: 30 3C 00 00 26 09
+_func_zerolt:
 0936: 68       | pla
 0937: 30 04    | bmi 0x04
 0939: F4 00 00 | pea 0x0000
@@ -786,6 +863,7 @@ _func_gt:
 097F: F4 FF FF | pea 0xFFFF
 0982: 02       | nxt
 
+// Unsigned version of "<"
 0983: 00
 _ascii_Ult:    | "U<"
 0984: 55 3C 00 00 74 09
@@ -800,9 +878,11 @@ _ascii_Ult:    | "U<"
 0997: F4 00 00 | pea 0xFFFF
 099A: 02       | nxt
 
+// Unsigned version of ">"
 099B: 00
 _ascii_Ugt:    | "U>"
 099C: 55 3E 00 00 8A 09
+_func_Ugt:
 09A2: 68       | pla
 09A3: C3 00    | cmp [S+0x00]
 09A5: 90 05    | bcc 0x05
@@ -813,6 +893,7 @@ _ascii_Ugt:    | "U>"
 09AD: F4 FF FF | pea 0xFFFF
 09B0: 02       | nxt
 
+// Pops two values, pushes 0xFFFF if the top is greater or equal, else pushes 0x0000
 09B1: 00
 _ascii_ltequals: | "<="
 09B2: 3C 3D 00 00 A2 09
@@ -826,6 +907,7 @@ _ascii_ltequals: | "<="
 09C3: F4 00 00 | pea 0x0000
 09C6: 02       | nxt
 
+// Pops two values, pushes 0xFFFF if the top is less or equal, else pushes 0x0000
 09C7: 00
 _ascii_gtequals: | ">="
 09C8: 3E 3D 00 00 B8 09
@@ -855,9 +937,32 @@ _func_equals:
 09F0: F4 FF FF | pea 0xFFFF
 09F3: 02       | nxt
 
-09F4: 00 43 45 4C 4C 00 00 E5 09 F4 02 00
-0A00: 02 00 43 45 4C 4C 53 00 00 FD 09 68 18 2A 48 02
-0A10: 00 4D 41 58 00 00 0B 0A 68 C3 00 30 02 83 00 02
+// Pushes the size of a numeric 'cell' (always 2 for the 65EL02)
+09F4: 00
+_ascii_CELL:   | "CELL"
+09F5: 43 45 4C 4C 00 00 E5 09
+09FD: F4 02 00 | pea 0x0002
+0A00: 02       | nxt
+
+// Pops a value and pushes the size of that number of cells (2*N for the 65EL02)
+0A01: 00
+_ascii_CELLS:  | "CELLS"
+0A02: 43 45 4C 4C 53 00 00 FD 09
+0A0B: 68       | pla
+0A0C: 18       | clc
+0A0D: 2A       | rol A
+0A0E: 48       | pha
+0A0F: 02       | nxt
+
+// Pops two values, pushes the maximum value
+0A10: 00
+_ascii_MAX:    | "MAX"
+0A11: 4D 41 58 00 00 0B 0A
+0A18: 68       | pla
+0A19: C3 00    | cmp [S+0x00]
+0A1B: 30 02    | bmi 0x02
+0A1D: 83 00    | sta [S+0x00]
+0A1F: 02       | nxt
 
 // Pops two values, pushes the minimum value
 0A20: 00
@@ -870,11 +975,46 @@ _func_MIN:
 0A2D: 83 00    | sta [S+0x00]
 0A2F: 02       | nxt
 
-0A30: 00 4D 4F 56 45 00 00 28 0A 0B 68 7A FA 5C BB A8
-0A40: F0 0B E2 20 42 95 00 E8 88 D0 F9 C2 20 2B 02 00
-0A50: 46 49 4C 4C 00 00 39 0A 68 7A FA C0 00 00 F0 0A
-0A60: E2 20 95 00 E8 88 D0 FA C2 20 02
+// Copies memory S[2] to S[2]+S[0] to S[1] to S[1]+S[0], pops all 3 values
+0A30: 00
+_ascii_MOVE:   | "MOVE"
+0A31: 4D 4F 56 45 00 00 28 0A
+0A39: 0B       | rhi
+0A3A: 68       | pla
+0A3B: 7A       | ply
+0A3C: FA       | plx
+0A3D: 5C       | txi
+0A3E: BB       | tyx
+0A3F: A8       | tay
+0A40: F0 0B    | beq 0x0B
+0A42: E2 20    | sep 0x20
+0A44: 42       | nxa
+0A45: 95 00    | sta (X+0x00)
+0A47: E8       | inx
+0A48: 88       | dey
+0A49: D0 F9    | bne 0xF9
+0A4B: C2 20    | rep 0x20
+0A4D: 2B       | rli
+0A4E: 02       | nxt
 
+// Fills memory at S[2] to S[2]+S[1] with S[0], pops all 3 values
+0A4F: 00
+_ascii_FILL:   | "FILL"
+0A50: 46 49 4C 4C 00 00 39 0A
+0A58: 68       | pla         // S[0] -> A : Store value
+0A59: 7A       | ply         // S[1] -> Y : Store count
+0A5A: FA       | plx         // S[2] -> X : Store address
+0A5B: C0 00 00 | cpy 0x0000  // Y == 0 ?
+0A5E: F0 0A    | beq 0x0A    // RETURN
+0A60: E2 20    | sep 0x20
+0A62: 95 00    | sta (X+0x00)// A -> C[X]
+0A64: E8       | inx         // X++
+0A65: 88       | dey         // Y--
+0A66: D0 FA    | bne 0xFA
+0A6D: C2 20    | rep 0x20
+0A6F: 02       | nxt
+
+// Performs a C-style memcmp as memcmp(S[2], S[1], S[0]), pops 3 values and pushes the result
 0A6B: 00
 _ascii_MEMCMP: | "MEMCMP"
 0A6C: 4D 45 4D 43 4D 50 00 00 58 0A
@@ -930,30 +1070,192 @@ _func_STRLEN:
 0ABE: 83 00    | sta [S+0x00]
 0AC0: 02       | nxt
 
-0AC1: 00 52 53 54 52 4C 45 4E 00 00 A9 0A A3 00 AA
-0AD0: A9 00 00 E2 20 D5 00 F0 03 CA 80 F9 C2 20 68 DA
-0AE0: 38 E3 00 83 00 02 00 54 52 55 45 00 00 CD 0A 22
-0AF0: 24 05 FF FF 00 46 41 4C 53 45 00 00 EF 0A 22 24
-0B00: 05 00 00 00 53 43 52 41 54 43 48 00 00 FE 0A 22
-0B10: 24 05 40 00 00 54 49 42 00 00 0F 0B 22 24 05 80
-0B20: 00 00 52 41 44 49 58 00 00 1C 0B 22 34 05 0A 00
-0B30: 00 42 4C 00 00 2B 0B 22 24 05 20 00 00 55 49 54
-0B40: 4F 41 00 00 37 0B 22 0F 0B 50 05 14 00 8F 07 50
-0B50: 05 00 00 B3 06 64 07 DC 08 8D 06 50 05 00 00 2B
-0B60: 0B 73 07 32 08 FC 06 50 05 30 00 8F 07 49 06 50
-0B70: 05 39 00 74 09 7D 05 7F 0B 50 05 07 00 8F 07 B3
-0B80: 06 64 07 B3 06 13 09 7D 05 57 0B 0B 07 5C 05 00
-0B90: 57 4F 52 44 00 00 46 0B 22 49 06 7F 07 49 06 50
-0BA0: 05 20 00 E5 09 B3 06 50 05 09 00 E5 09 93 08 B3
-0BB0: 06 50 05 0A 00 E5 09 93 08 B3 06 50 05 0D 00 E5
-0BC0: 09 93 08 0B 07 7D 05 CF 0B D1 08 6B 05 99 0B 49
-0BD0: 06 7F 07 13 09 7D 05 DD 0B 49 06 5C 05 49 06 49
-0BE0: 06 7F 07 49 06 50 05 20 00 48 09 B3 06 26 09 86
-0BF0: 08 B3 06 50 05 09 00 48 09 86 08 B3 06 50 05 0A
-0C00: 00 48 09 86 08 B3 06 50 05 0D 00 48 09 86 08 0B
-0C10: 07 7D 05 1B 0C D1 08 6B 05 DF 0B 49 06 7F 07 7D
-0C20: 05 2D 0C 50 05 00 00 B3 06 64 07 D1 08 8D 06 5C
-0C30: 05
+// Same as 'STRLEN', but iterates in reverse to find a NUL
+0AC1: 00
+_ascii_RSTRLEN: | "RSTRLEN"
+0AC2: 52 53 54 52 4C 45 4E 00 00 A9 0A
+0ACD: A3 00    | lda [S+0x00]
+0ACF: AA       | tax
+0AD0: A9 00 00 | lda 0x0000
+0AD3: E2 20    | sep 0x20
+0AD5: D5 00    | cmp (X+0x00)
+0AD7: F0 03    | beq 0x03
+0AD9: CA       | dex
+0ADA: 80 F9    | bra 0xF9
+0ADC: C2 20    | rep 0x20
+0ADE: 68       | pla
+0ADF: DA       | phx
+0AE0: 38       | sec
+0AE1: E3 00    | sbc [S+0x00]
+0AE3: 83 00    | sta [S+0x00]
+0AE5: 02       | nxt
+
+// Pushes a "true" value
+0AE6: 00
+_ascii_TRUE:   | "TRUE"
+0AE7: 54 52 55 45 00 00 CD 0A
+0AEF: 22 24 05 | ent _func_DOCON
+0AF2: FF FF
+
+// Pushes a "false" value
+0AF4: 00
+_ascii_FALSE:  | "FALSE"
+0AF5: 46 41 4C 53 45 00 00 EF 0A
+0AFE: 22 24 05 | ent _func_DOCON
+0B01: 00 00
+
+// Pushes 0x0040
+0B03: 00
+_ascii_SCRATCH: | "SCRATCH"
+0B04: 53 43 52 41 54 43 48 00 00 FE 0A
+_func_SCRATCH:
+0B0F: 22 24 05 | ent _func_DOCON
+0B12: 40 00
+
+// Pushes 0x0080
+0B14: 00
+_ascii_TIB:    | "TIB"
+0B15: 54 49 42 00 00 0F 0B
+0B1C: 22 24 05 | ent _func_DOCON
+0B1F: 80 00
+
+// Pushes the address of the radix variable, used for string-integer conversion
+0B21: 00
+_ascii_RADIX:  | "RADIX"
+0B22: 52 41 44 49 58 00 00 1C 0B
+_func_RADIX:
+0B2B: 22 34 05 | ent _func_DOVAR
+0B2E: 0A 00
+
+// Pushes a space character
+0B30: 00
+_ascii_BL:     | "BL"
+0B31: 42 4C 00 00 2B 0B
+_func_BL:
+0B37: 22 24 05 | ent _func_DOCON
+0B3A: 20 00
+
+// Pops an unsigned number and pushes the address of the number as a string
+0B3C: 00
+_ascii_UITOA:  | "UITOA"
+0B3D: 55 49 54 4F 41 00 00 37 0B
+_func_UITOA:
+0B46: 22 0F 0B | ent _func_SCRATCH  // SCRATCH    // s x0040
+0B49: 50 05    | (lit)              // (lit)
+0B4B: 14 00    | 0x0014             //     0x0014 // s x0040 x0014
+0B4D: 8F 07    | _func_plus         // +          // s x0054
+0B4F: 50 05    | (lit)              // (lit)
+0B51: 00 00    | 0x0000             //     0x0000 // s x0054 x0000
+0B53: B3 06    | _func_OVER         // OVER       // s x0054 x0000 x0054
+0B55: 64 07    | _func_Cexclamation // C!         // 
+0B57: DC 08    | _func_oneminus     // 1-
+0B59: 8D 06    | _func_SWAP         // SWAP
+0B5B: 50 05    | _func_lit          // (lit)
+0B5D: 00 00    | 0x0000             //     0x0000
+0B5F: 2B 0B    | _func_RADIX        // RADIX
+0B61: 73 07    | _func_at           // @
+0B63: 32 08    | _func_UMslashMOD   // UM/MOD
+0B65: FC 06    | _func_nROT         // -ROT
+0B67: 50 05    | _func_lit          // (lit)
+0B69: 30 00    | 0x0030             //     0x0030
+0B6B: 8F 07    | _func_plus         // +
+0B6D: 49 06    | _func_DUP          // DUP
+0B6F: 50 05    | _func_lit          // (lit)
+0B71: 39 00    | 0x0039             //     0x0039
+0B73: 74 09    | _func_gt           // >
+0B75: 7D 05    | _func_qbranch      // (?branch)
+0B77: 7F 0B    | 0x0B7F             //     0x0B7F
+0B79: 50 05    | _func_lit          // (lit)
+0B7B: 07 00    | 0x0007             //     0x0007
+0B7D: 8F 07    | _func_plus         // +
+0B7F: B3 06    | _func_OVER         // OVER
+0B81: 64 07    | _func_Cexclamation // C!
+0B83: B3 06    | _func_OVER         // OVER
+0B85: 13 09    | _func_zeroeq       // 0=
+0B87: 7D 05    | _func_qbranch      // (?branch)
+0B89: 57 0B    | 0x0B57             //     0x0B57
+0B8B: 0B 07    | _func_NIP          // NIP
+0B8D: 5C 05    | _func_EXIT         // EXIT
+
+0B8F: 00
+_ascii_WORD:   | "WORD"
+0B90: 57 4F 52 44 00 00 46 0B
+0B98: 22 49 06 | ent _func_DUP      // DUP
+0B9B: 7F 07    | _func_Cat          // C@
+0B9D: 49 06    | _func_DUP          // DUP
+0B9F: 50 05    | _func_lit          // (lit)
+0BA1: 20 00    | 0x0020             //     0x0020
+0BA3: E5 09    | _func_equals       // =
+0BA5: B3 06    | _func_OVER         // OVER
+0BA7: 50 05    | _func_lit          // (lit)
+0BA9: 09 00    | 0x0009             //     0x0009
+0BAB: E5 09    | _func_equals       // =
+0BAD: 93 08    | _func_OR           // OR
+0BAF: B3 06    | _func_OVER         // OVER
+0BB1: 50 05    | _func_lit          //(lit)
+0BB3: 0A 00    | 0x000A             //    0x000A
+0BB5: E5 09    | _func_equals       // =
+0BB7: 93 08    | _func_OR           // OR
+0BB9: B3 06    | _func_OVER         // OVER
+0BBB: 50 05    | _func_lit          // (lit)
+0BBD: 0D 00    | 0x000D             //     0x000D
+0BBF: E5 09    | _func_equals       // =
+0BC1: 93 08    | _func_OR           // OR
+0BC3: 0B 07    | _func_NIP          // NIP
+0BC5: 7D 05    | _func_qbranch      // (?branch)
+0BC7: CF 0B    | 0x0BCF             //     0x0BCF
+0BC9: D1 08    | _func_oneplus      // 1+
+0BCB: 6B 05    | _func_branch       // (branch)
+0BCD: 99 0B    | 0x0B99             //     0x0B99
+0BCF: 49 06    | _func_DUP          // DUP
+0BD1: 7F 07    | _func_Cat          // C@
+0BD3: 13 09    | _func_zeroeq       // 0=
+0BD5: 7D 05    | _func_qbranch      // (?branch)
+0BD7: DD 0B    | 0x0BDD             //     0x0BDD
+0BD9: 49 06    | _func_DUP          // DUP
+0BDB: 5C 05    | _func_EXIT         // EXIT
+0BDD: 49 06    | _func_DUP          // DUP
+0BDF: 49 06    | _func_DUP          // DUP
+0BE1: 7F 07    | _func_Cat          // C@
+0BE3: 49 06    | _func_DUP          // DUP
+0BE5: 50 05    | _func_lit          // (lit)
+0BE7: 20 00    | 0x0020             //     0x0020
+0BE9: 48 09    | _func_ltgt         // <>
+0BEB: B3 06    | _func_OVER         // OVER
+0BED: 26 09    | _func_zeroltgt     // 0<>
+0BEF: 86 08    | _func_AND          // AND
+0BF1: B3 06    | _func_OVER         // OVER
+0BF3: 50 05    | _func_lit          // (lit)
+0BF5: 09 00    | 0x0009             //     0x0009
+0BF7: 48 09    | _func_ltgt         // <>
+0BF9: 86 08    | _func_AND          // AND
+0BFB: B3 06    | _func_OVER         // OVER
+0BFD: 50 05    | _func_lit          // (lit)
+0BFF: 0A 00    | 0x000A             //     0x000A
+0C01: 48 09    | _func_ltgt         // <>
+0C03: 86 08    | _func_AND          // AND
+0C05: B3 06    | _func_OVER         // OVER
+0C07: 50 05    | _func_lit          // (lit)
+0C09: 0D 00    | 0x000D             //     0x000D
+0C0B: 48 09    | _func_ltgt         // <>
+0C0D: 86 08    | _func_AND          // AND
+0C0F: 0B 07    | _func_NIP          // NIP
+0C11: 7D 05    | _func_qbranch      // (?branch)
+0C13: 1B 0C    | 0x0C1B             //     0x0C1B
+0C15: D1 08    | _func_oneplus      // 1+
+0C17: 6B 05    | _func_branch       // (branch)
+0C19: DF 0B    | 0x0BDF             //     0x0BDF
+0C1B: 49 06    | _func_DUP          // DUP
+0C1D: 7F 07    | _func_Cat          // C@
+0C1F: 7D 05    | _func_qbranch      // (?branch)
+0C21: 2D 0C    | 0x0C2D             //     0x0C2D
+0C13: 50 05    | _func_lit          // (lit)
+0C15: 00 00    | 0x0000             //     0x0000
+0C17: B3 06    | _func_OVER         // OVER
+0C19: 64 07    | _func_Cexclamation // C!
+0C1B: D1 08    | _func_oneplus      // 1+
+0C1D: 8D 06    | _func_SWAP         // SWAP
+0C1F: 5C 05    | _func_EXIT  // EXIT
 
 // Performs a string split operation:
 // Pops a character codepoint, followed by a string address
@@ -1004,6 +1306,7 @@ _func_SPLIT:                                       // a b
 0C80: 8D 06    | _func_SWAP         // SWAP        // (a^+1)|a^ a*
 0C82: 5C 05    | _func_EXIT         // EXIT
 
+// Performs a C-style strcmp operation strcmp(S[1], S[0]), pops both values and pushes the result
 0C84: 00
 _ascii_STRCMP: | "STRCMP"
 0C85: 53 54 52 43 4D 50 00 00 3B 0C
@@ -1017,9 +1320,27 @@ _func_STRCMP:                             // a b
 0C9C: 76 0A    | _func_MEMCMP   // MEMCMP
 0C9E: 5C 05    | _func_EXIT     // EXIT
 
-0CA0: 00 49 53 55 4E 55 4D 00 00 8F 0C 22 49 06 50 05
-0CB0: 40 00 74 09 7D 05 BE 0C 50 05 07 00 9C 07 50 05
-0CC0: 30 00 9C 07 49 06 36 09 8D 06 2B 0B 73 07 DC 08
+0CA0: 00
+_ascii_ISUNUM: | "ISUNUM"
+0CA1: 49 53 55 4E 55 4D 00 00 8F 0C
+0CAB: 22 49 06 | ent 
+0CAE: 50 05
+0CB0: 40 00
+0CB2: 74 09
+0CB4: 7D 05
+0CB6: BE 0C
+0CB8: 50 05
+0CBA: 07 00
+0CBC: 9C 07
+0CBE: 50 05
+0CC0: 30 00
+0CC2: 9C 07
+0CC4: 49 06
+0CC6: 36 09
+0CC8: 8D 06
+0CCA: 2B 0B
+0CCC: 73 07
+0CCE: DC 08
 0CD0: 74 09 93 08 13 09 5C 05 00 49 53 4E 55 4D 00 00
 0CE0: AB 0C 22 49 06 AB 0C 8D 06 50 05 2D 00 E5 09 93
 0CF0: 08 5C 05 00 55 41 54 4F 49 00 00 E2 0C 22 50 05
@@ -1187,33 +1508,33 @@ _func_SCROLL:
 _ascii_CR:     | "CR"
 0EC1: 43 52 00 00 37 0E
 _func_CR:
-0EC7: 22 C1 0D | ent _func_TERMADDR   // TERMADDR
+0EC7: 22 C1 0D | ent _func_TERMADDR   // TERMADDR   // Select terminal
 0ECA: 73 07    | _func_at             // @
 0ECC: B0 0D    | _func_RBPexclamation // RBP!
-0ECE: 50 05    | _func_lit            // (lit)
+0ECE: 50 05    | _func_lit            // (lit)      // Get cursor Y
 0ED0: 02 03    | 0x0302               //     0x0302
 0ED2: 7F 07    | _func_Cat            // C@
 0ED4: 50 05    | _func_lit            // (lit)
 0ED6: 30 00    | 0x0030               //     0x0030
 0ED8: 74 09    | _func_gt             // >
-0EDA: 7D 05    | _func_qbranch        // (?branch)
+0EDA: 7D 05    | _func_qbranch        // (?branch) // If not greater than 48
 0EDC: E4 0E    | 0x0EE4               //     0x0EE4
-0EDE: 37 0E    | 
-0EE0: 6B 05
-0EE2: F2 0E
-0EE4: 50 05
-0EE6: 02 03
-0EE8: 7F 07
-0EEA: D1 08
-0EEC: 50 05
-0EEE: 02 03
-0EF0: 64 07
-0EF2: 50 05
-0EF4: 00 00
-0EF6: 50 05
-0EF8: 01 03
-0EFA: 64 07
-0EFC: 5C 05    | _func_EXIT
+0EDE: 37 0E    | _func_SCROLL         // SCROLL    // Else scroll and branch
+0EE0: 6B 05    | _func_branch         // (branch)
+0EE2: F2 0E    | 0x0EF2               //     0x0EF2
+0EE4: 50 05    | _func_lit            // (lit)     // Increment cursor Y
+0EE6: 02 03    | 0x0302               //     0x0302
+0EE8: 7F 07    | _func_Cat            // C@
+0EEA: D1 08    | _func_oneplus        // 1+
+0EEC: 50 05    | _func_lit            // (lit)
+0EEE: 02 03    | 0x0302               //     0x0302
+0EF0: 64 07    | _func_Cexclamation   // C!
+0EF2: 50 05    | _func_lit            // (lit)      // Set cursor X to 0
+0EF4: 00 00    | 0x0000               //     0x0000
+0EF6: 50 05    | _func_lit            // (lit)
+0EF8: 01 03    | 0x0301               //     0x0301
+0EFA: 64 07    | _func_Cexclamation   // C!
+0EFC: 5C 05    | _func_EXIT           // EXIT
 
 0EFE: 00
 _ascii_EMIT:   | "EMIT"
@@ -1275,51 +1596,164 @@ _func_BS:
 0F71: C2 20    | rep 0x20
 0F73: 02       | nxt
 
+// Tests if a character is available in the key buffer, pushes 0xFFFF if true, else pushes 0x0000
 0F74: 00
-0F75: 4B 45 59 3F 00 00 55 0F E2 20 AD
-0F80: C4 0D EF 00 AD 04 03 CD 05 03 C2 20 F0 04 F4 FF
-0F90: FF 02 F4 00 00 02 00 4B 45 59 00 00 7D 0F E2 20
-0FA0: AD C4 0D EF 00 AD 04 03 CD 05 03 D0 03 CB 80 F5
-0FB0: AD 06 03 8F EE 04 03 C2 20 48 02 00 41 54 2D 58
-0FC0: 59 00 00 9E 0F E2 20 AD C4 0D EF 00 FA 8A 8D 02
-0FD0: 03 FA 8A 8D 01 03 C2 20 02
+_ascii_KEYquestion: | "KEY?"
+0F75: 4B 45 59 3F 00 00 55 0F
+0F7D: E2 20    | sep 0x20
+0F7F: AD C4 0D | lda [_var_TERMADDR]
+0F82: EF 00    | mmu 0x00
+0F84: AD 04 03 | lda [0x0304]
+0F87: CD 05 03 | cmp [0x0305]
+0F8A: C2 20    | rep 0x20
+0F8C: F0 04    | beq 0x04
+0F8E: F4 FF FF | pea 0xFFFF
+0F91: 02       | nxt
+0F92: F4 00 00 | pea 0x0000
+0F95: 02       | nxt
 
-// Pops a string off the R stack
+// Reads a single key from the key buffer, waiting if none is pressed. Pushes the ascii value
+0F96: 00
+_ascii_KEY:    | "KEY"
+0F97: 4B 45 59 00 00 7D 0F
+0F9E: E2 20    | sep 0x20
+0FA0: AD C4 0D | lda [_var_TERMADDR]
+0FA3: EF 00    | mmu 0x00
+0FA5: AD 04 03 | lda [0x0304]
+0FA8: CD 05 03 | cmp [0x0305]
+0FAB: D0 03    | bne 0x03
+0FAD: CB 80 F5 | wai
+0FB0: AD 06 03 | lda [0x0306]
+0FB3: 8F       | zea
+0FB4: EE 04 03 | inc [0x0304]
+0FB7: C2 20    | rep 0x20
+0FB9: 48       | pha
+0FBA: 02       | nxt
+
+// Pops a value and sets the cursor Y position, then pops a value and sets the cursor X position
+0FBB: 00
+_ascii_ATdashXY: | "AT-XY"
+0FBC: 41 54 2D 58 59 00 00 9E 0F
+0FC5: E2 20    | sep 0x20
+0FC7: AD C4 0D | lda [_var_TERMADDR]
+0FCA: EF 00    | mmu 0x00
+0FCC: FA       | plx
+0FCD: 8A       | txa
+0FCE: 8D 02 03 | sta [0x0302]
+0FD1: FA       | plx
+0FD2: 8A       | txa
+0FD3: 8D 01 03 | sta[ 0x0301]
+0FD6: C2 20    | rep 0x20
+0FD8: 02       | nxt
+
+// Prints a string literal in the call list
 0FD9: 00
 _ascii_lpdotquoterp: "(.\")"
 0FDA: 28 2E 22 29 00 00 C5 0F
 _func_lpdotquoterp:
-0FE2: 22 2F 07 | ent _func_Rgt // R>         // R
-0FE5: 49 06    | _func_DUP     // DUP        // R R
-0FE7: 7F 07    | _func_Cat     // C@         // R C[R]
-0FE9: 56 06    | _func_qDUP    // ?DUP       // R C[R] C[R]*
-0FEB: 7D 05    | _func_qbranch // (?branch)  // IF C[R]=0 GOTO 0x0FF7
+0FE2: 22 2F 07 | ent _func_Rgt // R>         // Pop return index to value stack
+0FE5: 49 06    | _func_DUP     // DUP
+0FE7: 7F 07    | _func_Cat     // C@         // Read a character
+0FE9: 56 06    | _func_qDUP    // ?DUP
+0FEB: 7D 05    | _func_qbranch // (?branch)  // Jump to end if NUL
 0FED: F7 0F    | 0x0FF7        //     0x0FF7
-0FEE: 07 0F    | _func_EMIT    // EMIT
-0FF1: D1 08    | _func_oneplus // 1+         // 
+0FEE: 07 0F    | _func_EMIT    // EMIT       // Print character, increment index, and loop
+0FF1: D1 08    | _func_oneplus // 1+
 0FF3: 6B 05    | _func_branch  // (branch)
 0FF5: E5 0F    | 0x0FE5        //     0x0FE5
-0FF7: D1 08    | _func_oneplus // 1+         // R+1
+0FF7: D1 08    | _func_oneplus // 1+         // Increment past NUL, push new return index
 0FF9: 25 07    | _func_gtR     // >R
 0FFB: 5C 05    | _func_EXIT    // EXIT
 
+// Prints a space
 0FFD: 00
-_ascii_SPACE:
+_ascii_SPACE:  | "SPACE"
 0FFE: 53 50 41 43 45 00 00 E2 0F
-1007: 22 37 0B | ent 
-100A: 07 0F
-100C: 5C 05
-100E: 00 54
-1010: 59 50 45 00 00 07 10 22 49 06 7F 07 56 06 7D 05
-1020: 2A 10 07 0F D1 08 6B 05 18 10 75 06 5C 05 00 2E
-1030: 00 00 17 10 22 49 06 36 09 7D 05 4F 10 C3 08 46
-1040: 0B DC 08 50 05 2D 00 B3 06 64 07 6B 05 51 10 46
-1050: 0B 17 10 07 10 5C 05 00 55 2E 00 00 34 10 22 46
-1060: 0B 17 10 07 10 5C 05 00 2F 4D 4F 44 00 00 5E 10
-1070: 22 B3 06 36 09 8D 06 05 08 5C 05 00 2F 00 00 70
-1080: 10 22 70 10 75 06 5C 05 00 4D 4F 44 00 00 81 10
-1090: 22 70 10 0B 07 5C 05 00 41 42 4F 52 54 00 00 90
-10A0: 10 22 78 16 F3 08 29 18
+_func_SPACE:
+1007: 22 37 0B | ent _func_BL // BL
+100A: 07 0F    | _func_EMIT   // EMIT
+100C: 5C 05    | _func_EXIT   // EXIT
+
+// Pops a string address off the stack and prints it
+100E: 00
+_ascii_TYPE:   | "TYPE"
+100F: 54 59 50 45 00 00 07 10
+_func_TYPE:
+1017: 22 49 06 | ent _func_DUP // DUP
+101A: 7F 07    | _func_Cat     // C@
+101C: 56 06    | _func_qDUP    // ?DUP
+101E: 7D 05    | _func_qbranch // (?branch)
+1020: 2A 10    | 0x102A        //     0x102A
+1022: 07 0F    | _func_EMIT    // EMIT
+1024: D1 08    | _func_oneplus // 1+
+1026: 6B 05    | _func_branch  // (branch)
+1028: 18 10    | 0x1018        //     0x1018
+102A: 75 06    | _func_DROP    // DROP
+102C: 5C 05    | _func_EXIT    // EXIT
+
+// Pops a number off the stack and prints it
+102E: 00
+_ascii_dot:    | "."
+102F: 2E 00 00 17 10
+1034: 22 49 06 | ent _func_DUP      // DUP
+1037: 36 09    | _func_zerolt       // 0<
+1039: 7D 05    | _func_qbranch      // (?branch)
+103B: 4F 10    | 0x104F             //     0x104F
+103D: C3 08    | _func_NEGATE       // NEGATE
+103F: 46 0B    | _func_UITOA        // UITOA
+1041: DC 08    | _func_oneminus     // 1-
+1043: 50 05    | _func_lit          // (lit)
+1045: 2D 00    | 0x002D             //     0x002D
+1047: B3 06    | _func_OVER         // OVER
+1049: 64 07    | _func_Cexclamation // C!
+104B: 6B 05    | _func_branch       // (branch)
+104D: 51 10    | 0x1051             //     0x1051
+104F: 46 0B    | _func_UITOA        // UITOA
+1051: 17 10    | _func_TYPE         // TYPE
+1053: 07 10    | _func_SPACE        // SPACE
+1055: 5C 05    | _func_EXIT         // EXIT
+
+// Pops an unsigned number off the stack and prints it
+1057: 00
+_ascii_Udot:   | "U."
+1058: 55 2E 00 00 34 10
+_func_Udot:
+105E: 22 46 0B | ent _func_UITOA // UITOA
+1061: 17 10    | _func_TYPE      // TYPE
+1063: 07 10    | _func_SPACE     // SPACE
+1065: 5C 05    | _func_EXIT      // EXIT
+
+1067: 00
+_ascii_slashMOD: | "/MOD"
+0168: 2F 4D 4F 44 00 00 5E 10
+                                            // x y
+1070: 22 B3 06 | ent _func_OVER   // OVER   // x y x
+1073: 36 09    | _func_zerolt     // 0<     // x y 0<x
+1075: 8D 06    | _func_SWAP       // SWAP   // x 0<x y
+1077: 05 08    | _func_FMslashMOD // FM/MOD // r q
+1079: 5C 05    | _func_EXIT       // EXIT
+
+107B: 00
+_ascii_slash:  | "/"
+107C: 2F 00 00 70 10
+                                            // x y
+1081: 22 70 10 | ent _func_slashMOD // /MOD // r q
+1084: 75 06    | _func_DROP         // DROP // r q
+1086: 5C 05    | _func_EXIT         // EXIT
+
+1088: 00
+_ascii_mod:    | "MOD"
+1089: 4D 4F 44 00 00 81 10
+1090: 22 70 10 | ent _func_slashMOD // /MOD
+1093: 0B 07    | _func_NIP          // NIP
+1095: 5C 05    | _func_EXIT         // EXIT
+
+1097: 00
+_ascii_ABORT:  | "ABORT"
+1098: 41 42 4F 52 54 00 00 90 10
+10A1: 22 78 16 | ent _func_SP0       // SP0
+10A4: F3 08    | _func_SPexclamation // !
+10A6: 29 18    | _func_QUIT          // QUIT
 
 10A8: 00
 _ascii_TIBPTR: | "TIBPTR"
@@ -1329,22 +1763,24 @@ _func_TIBPTR
 10B6: 00 00    |             // TIBPTR value
 
 10B8: 00
-_ascii_VOCAB: "VOCAB"
+_ascii_VOCAB:  | "VOCAB"
 10B9: 56 4F 43 41 42 00 00 B3 10
 _func_VOCAB:
 10C2: 22 34 05 | ent _func_DOVAR
+_var_VOCAB:
 10C5: 56 1D    | _func_COLD  // VOCAB value
 
 10C7: 00
 _ascii_lpHERErp: | "(HERE)"
 10C8: 28 48 45 52 45 29 00 00 C2 10
-_func_lpHERErp
+_func_lpHERErp:
 10D2: 22 34 05 | ent _func_DOVAR
 10D5: A7 1D    | _var_HERE   // HERE address
 
 10D7: 00
 _ascii_HERE:   | "HERE"
 10D8: 48 45 52 45 00 00 D2 10
+_func_HERE:
 10E0: 22 D2 10 | ent _func_lpHERErp // (HERE)
 10E3: 73 07    | _func_at           // @
 10E5: 5C 05    | _func_EXIT         // EXIT
@@ -1352,6 +1788,7 @@ _ascii_HERE:   | "HERE"
 10E7: 00
 _ascii_TO:     | "TOP"
 10E8: 54 4F 50 00 00 E0 10
+_func_TOP:
 10EF: 22 34 05 | ent _func_DOVAR
 _var_TOP:
 10F2: 00 00    |             // TOP value
@@ -1366,46 +1803,83 @@ _var_STATE:
 1103: 00
 _ascii_PROBE:  | "PROBE"
 1104: 50 52 4F 42 45 00 00 FE 10
-110D: 22 50 05 | ent _func_lit      // (lit)
+110D: 22 50 05 | ent _func_lit      // (lit)      // x1FFF
 1110: FF 1F    | 0x1FFF             //     0x1FFF
-1112: 49 06    | _func_DUP          // DUP
-1114: 50 05    | _func_lit          // (lit)
+1112: 49 06    | _func_DUP          // DUP        // x1FFF x1FFF
+1114: 50 05    | _func_lit          // (lit)      // x1FFF x1FFF x2000
 1116: 00 20    | 0x2000             //     0x2000
-1118: 8F 07    | _func_plus         // +
-111A: 49 06    | _func_DUP          // DUP
-111C: 7F 07    | _func_Cat          // C@
-111E: 49 06    | _func_DUP          // DUP
-1120: B2 08    | _func_INVERT       // INVERT
-1122: C1 06    | _func_2OVER        // 2OVER
-1124: 38 07    | _func_exclamation  // !
-1126: 49 06    | _func_DUP          // DUP
-1128: C1 06    | _func_2OVER        // 2OVER
-112A: 7F 07    | _func_Cat          // C@
-112C: E5 09    | _func_equals       // =
-112E: 8D 06    | _func_SWAP         // SWAP
-1130: C1 06    | _func_2OVER        // 2OVER
-1132: 64 07    | _func_Cexclamation // C!
+1118: 8F 07    | _func_plus         // +          // x1FFF x3FFF
+111A: 49 06    | _func_DUP          // DUP        // x1FFF x3FFF x3FFF
+111C: 7F 07    | _func_Cat          // C@         // x1FFF x3FFF C[x3FFF]
+111E: 49 06    | _func_DUP          // DUP        // x1FFF x3FFF C[x3FFF] C[x3FFF]
+1120: B2 08    | _func_INVERT       // INVERT     // x1FFF x3FFF C[x3FFF] ~C[x3FFF]
+1122: C1 06    | _func_2OVER        // 2OVER      // x1FFF x3FFF C[x3FFF] ~C[x3FFF] x3FFF
+1124: 38 07    | _func_exclamation  // !          // x1FFF x3FFF C[x3FFF]
+1126: 49 06    | _func_DUP          // DUP        // x1FFF x3FFF C[x3FFF] C[x3FFF]
+1128: C1 06    | _func_2OVER        // 2OVER      // x1FFF x3FFF C[x3FFF] C[x3FFF] x3FFF
+112A: 7F 07    | _func_Cat          // C@         // x1FFF x3FFF C[x3FFF] C[x3FFF] C*[x3FFF]
+112C: E5 09    | _func_equals       // =          // x1FFF x3FFF C[x3FFF] C[x3FFF]=C*[x3FFF]
+112E: 8D 06    | _func_SWAP         // SWAP       // x1FFF x3FFF C[x3FFF]=C*[x1FFF] C[x3FFF]
+1130: C1 06    | _func_2OVER        // 2OVER      // x1FFF x3FFF C[x3FFF]=C*[x1FFF] C[x3FFF] x3FFF
+1132: 64 07    | _func_Cexclamation // C!         // x1FFF x3FFF C[x3FFF]=C*[x1FFF]
 1134: 7D 05    | _func_qbranch      // (?branch)
 1136: 3C 11    | 0x113C             //     0x113C
-1138: 75 06    | _func_DROP         // DROP
-113A: 5C 05    | _func_EXIT         // EXIT
-113C: 0B 07    | _func_NIP          // NIP
-113E: 49 06    | _func_DUP          // DUP
-1140: 50 05    | _func_lit          // (lit)
+1138: 75 06    | _func_DROP         // DROP       // x1FFF
+113A: 5C 05    | _func_EXIT         // EXIT       //
+
+113C: 0B 07    | _func_NIP          // NIP        // x3FFF
+113E: 49 06    | _func_DUP          // DUP        // x3FFF x3FFF
+1140: 50 05    | _func_lit          // (lit)      // x3FFF x3FFF xFFFF
 1142: FF FF    | 0xFFFF             //     0xFFFF
-1144: E5 09    | _func_equals       // =
+1144: E5 09    | _func_equals       // =          //
 1146: 7D 05    | _func_qbranch      // (?branch)
-1148: 12 11    | 0x1112             // 0x1112
+1148: 12 11    | 0x1112             //     0x1112
 114A: 5C 05    | _func_EXIT         // EXIT
 
 114C: 00
-114D: 46 52 45
-1150: 45 00 00 0D 11 22 EF 10 73 07 E0 10 9C 07 5C 05
-1160: 00 41 4C 4C 4F 54 00 00 55 11 22 49 06 50 05 02
-1170: 00 8F 07 55 11 A2 09 7D 05 8F 11 E2 0F 4F 75 74
-1180: 20 6F 66 20 6D 65 6D 6F 72 79 00 C7 0E A1 10 E0
-1190: 10 8D 06 D2 10 44 07 5C 05 00 2C 00 00 6A 11 22
-11A0: FD 09 6A 11 38 07 5C 05 00 2C 43 00 00 9F 11 22
+_ascii_FREE:   | "FREE"
+114D: 46 52 45 45 00 00 0D 11
+_func_FREE:
+1155: 22 EF 10 | ent _func_TOP // TOP
+1158: 73 07    | _func_at      // @
+115A: E0 10    | _func_HERE    // HERE
+115C: 9C 07    | _func_minus   // -
+115E: 5C 05    | _func_EXIT    // EXIT
+
+1160: 00
+_ascii_ALLOT:  | "ALLOT"
+1161: 41 4C 4C 4F 54 00 00 55 11
+116A: 22 49 06 | ent _func_DUP          // DUP
+116D: 50 05    | _func_lit              // (lit)
+116F: 02 00    | 0x0002                 //     0x0001
+1171: 8F 07    | _func_plus             // +
+1173: 55 11    | _func_FREE             // FREE
+1175: A2 09    | _func_Ugt              // U>
+
+1177: 7D 05    | _func_qbranch          // (?branch)
+1179: 8F 11    | 0x118F                 //     0x118F
+117B: E2 0F    | _func_lpdotquoterp     // (.")
+_str_OutOfMem: "Out of memory\0"
+117D: 4F 75 74 20 6F 66 20 6D 65 6D 6F 72 79 00
+118B: C7 0E    | _func_CR               // CR
+118D: A1 10    | _func_ABORT            // ABORT
+
+118F: E0 10    | _func_HERE             // HERE
+1191: 8D 06    | _func_SWAP             // SWAP
+1193: D2 10    | _func_lpHERErp         // (HERE)
+1195: 44 07    | _func_plus_exclamation // +!
+1197: 5C 05    | _func_EXIT             // EXIT
+
+1199: 00
+_ascii_
+119A: 2C 00 00 6A 11
+119F: 22 FD 09
+11A2: 6A 11
+11A4: 38 07
+11A6: 5C 05
+
+11A8: 00
+11A9: 2C 43 00 00 9F 11 22
 11B0: 50 05 01 00 6A 11 64 07 5C 05 00 2C 53 00 00 AF
 11C0: 11 22 49 06 7F 07 7D 05 D6 11 49 06 7F 07 AF 11
 11D0: D1 08 6B 05 C2 11 75 06 50 05 00 00 AF 11 5C 05
@@ -1489,8 +1963,22 @@ _ascii_TIBSPLIT: | "TIBSPLIT"
 1640: 00 52 45 43 55 52 53 45 00 01 19 16 22 C2 10 73
 1650: 07 9F 11 5C 05 00 54 49 43 4B 53 00 00 4C 16 22
 1660: 56 06 7D 05 6E 16 A5 0D DC 08 6B 05 60 16 5C 05
-1670: 00 53 50 30 00 00 5F 16 22 24 05 00 02 00 52 50
-1680: 30 00 00 78 16 22 24 05 00 03 00 3E 4E 41 4D 45
+
+1670: 00
+_ascii_SP0:    | "SP0"
+1671: 53 50 30 00 00 5F 16
+_func_SP0:
+1678: 22 24 05 | ent _func_DOCON
+167B: 00 02    |             // SP0 value
+
+167D: 00
+_ascii_RP0:    | "RP0"
+167E: 52 50 30 00 00 78 16
+_func_RP0:
+1685: 22 24 05 | ent _func_DOCON
+1688: 00 03    |             // RP0 value
+
+168A: 00 3E 4E 41 4D 45
 1690: 00 00 85 16 22 50 05 05 00 9C 07 49 06 CD 0A 9C
 16A0: 07 D1 08 5C 05 00 4E 41 4D 45 3E 00 00 94 16 22
 16B0: 49 06 A9 0A 8F 07 50 05 06 00 8F 07 5C 05 00 46
@@ -1516,9 +2004,28 @@ _ascii_TIBSPLIT: | "TIBSPLIT"
 17F0: 50 05 9F 11 9F 11 6B 05 12 18 E2 0F 55 6E 6B 6E
 1800: 6F 77 6E 20 54 6F 6B 65 6E 3A 20 00 17 10 C7 0E
 1810: A1 10 B3 10 73 07 6B 05 8E 17 75 06 75 06 5C 05
-1820: 00 51 55 49 54 00 00 8D 17 22 85 16 09 09 50 05
-1830: 00 00 FE 10 38 07 B6 18 36 09 7D 05 50 18 E2 0F
-1840: 45 6D 70 74 79 20 53 74 61 63 6B 00 78 16 F3 08
+
+1820: 00
+_ascii_QUIT:   | "QUIT"
+1821: 51 55 49 54 00 00 8D 17
+_func_QUIT:
+1829: 22 85 16 | ent _func_RP0
+182C: 09 09    | _func_RPexclamation
+182E: 50 05    | _func_lit
+1830: 00 00    | 0x0000
+1832: FE 10
+1834: 38 07
+1836: B6 18
+1838: 36 09
+183A: 7D 05
+183C: 50 18
+183E: E2 0F
+1840: 45 6D
+1842: 70 74
+1844: 79 20
+1846: 53 74
+1848: 61 63
+184A: 6B 00 78 16 F3 08
 1850: C7 0E FE 10 73 07 13 09 7D 05 65 18 E2 0F 3E 20
 1860: 00 6B 05 71 18 E2 0F 63 6F 6D 70 69 6C 65 3A 20
 1870: 00 1C 0B 50 05 78 00 19 17 07 10 8D 17 6B 05 36
@@ -1633,17 +2140,22 @@ _func_COLD:
 1D65: 7F 07    | _func_Cat          // C@
 1D67: C1 0D    | _func_TERMADDR     // TERMADDR   // Set TERMADDR to value
 1D69: 38 07    | _func_exclamation  // !
-1D6B: C7 0E    | _func_CR           // CR
+1D6B: C7 0E    | _func_CR           // CR         // Print header
 1D6D: C7 0E    | _func_CR           // CR
 1D6F: E2 0F    | _func_lpdotquoterp // (.")
 _str_MineOS:   | "MineOS V1.1 Initialized\0"
 1D71: 4D 69 6E 65 4F 53 20 56 31 2E 31 20 49 6E 69 74 69 61 6C 69 7A 65 64 00
-1D89: C7 0E    | _func_CR          // CR
-1D8B: 0D 11    | 
-1D8D: EF 10
-1D8F: 38 07
-1D91: 55 11 5E 10 E2 0F 62 79 74 65 73 20 66 72 65
-1DA0: 65 2E 00 C7 0E 29 18
+1D89: C7 0E    | _func_CR           // CR
+1D8B: 0D 11    | _func_PROBE        // PROBE      // Compute free memory
+1D8D: EF 10    | _func_TOP          // TOP
+1D8F: 38 07    | _func_exclamation  // !
+1D91: 55 11    | _func_FREE         // FREE
+1D93: 5E 10    | _func_Udot         // U.         // Print free memory
+1D95: E2 0F    | _func_lpdotquoterp // (.")
+_str_bytesFree: "bytes free.\0"
+1D97: 62 79 74 65 73 20 66 72 65 65 2E 00
+1DA3: C7 0E    | _func_CR           // CR
+1DA5: 29 18    | _func_QUIT         // QUIT       // Quit to shell
 _var_HERE:
 1DA7: 00 00    | ?
 1DA9: 00 00 00 00 00 00 00
