@@ -8,6 +8,13 @@ Notes:
 	Divided double words push the low bits first
 	FORTH words in parenthesis *can* be used regularly but will most likely just crash
 		They are only normally used in compiled programs
+	Some functions like UITOA use "scratch space" for strings, which are easily overwritten
+	Memory allocations for compilation and variables are allocated sequentially after the interpreter
+		
+	Expressions:
+		TIB - Terminal input buffer, read from the FORTH shell
+		TIBPTR - Pointer into TIB, at next word to parse
+		SCRATCH - Address of 64 bytes of "scratch space" for short operations
 
  Addr | Name      | Function
 ===============================================================================
@@ -42,7 +49,7 @@ Notes:
  070B | NIP       | Removes the value below the top
  0718 | TUCK      | Inserts a copy of the top value two values deep into the stack
  0725 | >R        | Pops a value and pushes it to the call stack
- 072F | <R        | Pops the call stack and pushes the value
+ 072F | R>        | Pops the call stack and pushes the value
  0738 | !         | Writes the word S[1] to address S[0], pops both
  0744 | +!        | Adds word S[1] to memory at address S[0], pops both
  0753 | -!        | Subtracts word S[1] from memory at address S[0], pops both
@@ -95,12 +102,12 @@ Notes:
  0ACD | RSTRLEN   | Identical to STRLEN, but iterates in reverse
  0AEF | TRUE      | Pushes a TRUE value
  0AFE | FALSE     | Pushes a FALSE value
- 0B0F | SCRATCH   | ? (Pushes 0x0040)
- 0B1C | TIB       | ? (Pushes 0x0080)
+ 0B0F | SCRATCH   | Pushes the address of "scratch space"
+ 0B1C | TIB       | Pushes the address of the terminal input buffer
  0B2B | RADIX     | Pushes the address of the RADIX variable for string-number conversion
  0B37 | BL        | Pushes the space character
  0B46 | UITOA     | Pops and unsigned number and pushes a string address of the stringified number
- 0B98 | WORD      | ?
+ 0B98 | WORD      | Pops a string, trims leading whitespace, pushes the 
  0C3B | SPLIT     | Splits string S[1] by character S[0], pops both values, pushes the address of the next occurence, then the address of the first occurence
  0C8F | STRCMP    | Performs a C-style strcmp between S[1] and S[0], pops both and pushes result
  0CAB | ISUNUM    | Pops a character, pushes a boolean if it is a number (0-9)
@@ -129,7 +136,7 @@ Notes:
  107C | /         | Pops two numbers and pushes the remainder (?@#!) of the bottom divided by top
  1090 | MOD       | Pops two numbers and pushes the quotient (?@#!) of the bottom divided by top
  10A1 | ABORT     | Clears the stack and invokes QUIT
- 10B3 | TIBPTR    | Pushes the address of the TIB variable
+ 10B3 | TIBPTR    | Pushes the address of the TIBPTR variable
  10C2 | VOCAB     | Pushes the address directly after the last FORTH word's header
  10D2 | (HERE)    | Pushes a pointer to the HERE address variable
  10E0 | HERE      | Pushes the HERE address
@@ -138,19 +145,26 @@ Notes:
  110D | PROBE     | ?
  1155 | FREE      | ?
  116A | ALLOT     | Pops a number and allocates that number of byte of memory, pushes the pointer
- 119F | ,         | ?
- 11AF | ,C        | ?
- 11C1 | ,S        | ?
- 11EC | TIBWORD   | ?
- 1208 | TIBSPLIT  | ?
- 1224 | HEADER    | ?
- 1250 | CONSTANT  | ?
- 126E | CREATE    | ?
- 128C | VARIABLE  | ?
- 129D | [         | ?
- 12AE | ]         | ?
+ 119F | ,         | Appends a word to allocated memory
+ 11AF | ,C        | Appends a character to allocated memory
+ 11C1 | ,S        | Appends a string to allocated memory
+ 11EC | TIBWORD   | Reads a string from the terminal input buffer and pushes it
+ 1208 | TIBSPLIT  | Performs a SPLIT operation on the TIB, 
+ 1224 | HEADER    | Builds a header for a new FORTH word
+ 1250 | CONSTANT  | Pops a value and converts it to a FORTH constant
+ 126E | CREATE    | Builds a header for a new FORTH variable
+ 128C | VARIABLE  | Creates a new FORTH variable initialized to 0
+ 129D | [         | Switches the FORTH shell into compilation mode
+ 12AE | ]         | Switches the FORTH shell into interpretation mode
  12C2 | HIDE      | Hides a word
  12E8 | REVEAL    | Reveals a word
+ 1311 | IMMEDIATE | Makes a FORTH word "immediate"
+ 1337 | (does)    | ?
+ 134E | DOES>     | ?
+ 1369 | :         | Starts compiling a new FORTH word
+ 137E | ;         | Signals the end of compiling a FORTH word
+ 1392 | IF        |
+ 13B0 | THEN      | 
  
  1678 | SP0       | Pushes the base address of the value stack
  1685 | RP0       | Pushes the base address of the call stack

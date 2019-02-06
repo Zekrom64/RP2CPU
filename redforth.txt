@@ -1162,14 +1162,14 @@ _func_UITOA:
 0B4F: 50 05    | (lit)              // (lit)
 0B51: 00 00    | 0x0000             //     0x0000 // s x0054 x0000
 0B53: B3 06    | _func_OVER         // OVER       // s x0054 x0000 x0054
-0B55: 64 07    | _func_Cexclamation // C!         // 
-0B57: DC 08    | _func_oneminus     // 1-
-0B59: 8D 06    | _func_SWAP         // SWAP
-0B5B: 50 05    | _func_lit          // (lit)
+0B55: 64 07    | _func_Cexclamation // C!         // s x0054
+0B57: DC 08    | _func_oneminus     // 1-         // s x0053
+0B59: 8D 06    | _func_SWAP         // SWAP       // x0053 s
+0B5B: 50 05    | _func_lit          // (lit)      // x0053 s x0000
 0B5D: 00 00    | 0x0000             //     0x0000
-0B5F: 2B 0B    | _func_RADIX        // RADIX
-0B61: 73 07    | _func_at           // @
-0B63: 32 08    | _func_UMslashMOD   // UM/MOD
+0B5F: 2B 0B    | _func_RADIX        // RADIX      // x0053 s x0000 RADIX
+0B61: 73 07    | _func_at           // @          // x0053 s x0000 [RADIX]
+0B63: 32 08    | _func_UMslashMOD   // UM/MOD     
 0B65: FC 06    | _func_nROT         // -ROT
 0B67: 50 05    | _func_lit          // (lit)
 0B69: 30 00    | 0x0030             //     0x0030
@@ -1196,62 +1196,64 @@ _func_UITOA:
 _ascii_WORD:   | "WORD"
 0B90: 57 4F 52 44 00 00 46 0B
 0B98: 22 49 06 | ent _func_DUP      // DUP
-0B9B: 7F 07    | _func_Cat          // C@
+0B9B: 7F 07    | _func_Cat          // C@         // Test if character is whitespace
 0B9D: 49 06    | _func_DUP          // DUP
 0B9F: 50 05    | _func_lit          // (lit)
-0BA1: 20 00    | 0x0020             //     0x0020
+0BA1: 20 00    | 0x0020             //     ' '
 0BA3: E5 09    | _func_equals       // =
 0BA5: B3 06    | _func_OVER         // OVER
 0BA7: 50 05    | _func_lit          // (lit)
-0BA9: 09 00    | 0x0009             //     0x0009
+0BA9: 09 00    | 0x0009             //     '\t'
 0BAB: E5 09    | _func_equals       // =
 0BAD: 93 08    | _func_OR           // OR
 0BAF: B3 06    | _func_OVER         // OVER
 0BB1: 50 05    | _func_lit          //(lit)
-0BB3: 0A 00    | 0x000A             //    0x000A
+0BB3: 0A 00    | 0x000A             //    '\n'
 0BB5: E5 09    | _func_equals       // =
 0BB7: 93 08    | _func_OR           // OR
 0BB9: B3 06    | _func_OVER         // OVER
 0BBB: 50 05    | _func_lit          // (lit)
-0BBD: 0D 00    | 0x000D             //     0x000D
+0BBD: 0D 00    | 0x000D             //     '\r'
 0BBF: E5 09    | _func_equals       // =
 0BC1: 93 08    | _func_OR           // OR
 0BC3: 0B 07    | _func_NIP          // NIP
-0BC5: 7D 05    | _func_qbranch      // (?branch)
+0BC5: 7D 05    | _func_qbranch      // (?branch)  // If not, goto 0x0BCF
 0BC7: CF 0B    | 0x0BCF             //     0x0BCF
-0BC9: D1 08    | _func_oneplus      // 1+
+0BC9: D1 08    | _func_oneplus      // 1+         // Next character
 0BCB: 6B 05    | _func_branch       // (branch)
-0BCD: 99 0B    | 0x0B99             //     0x0B99
-0BCF: 49 06    | _func_DUP          // DUP
+0BCD: 99 0B    | 0x0B99             //     0x0B99 // Loop
+
+0BCF: 49 06    | _func_DUP          // DUP        // If NUL, exit
 0BD1: 7F 07    | _func_Cat          // C@
 0BD3: 13 09    | _func_zeroeq       // 0=
 0BD5: 7D 05    | _func_qbranch      // (?branch)
 0BD7: DD 0B    | 0x0BDD             //     0x0BDD
 0BD9: 49 06    | _func_DUP          // DUP
 0BDB: 5C 05    | _func_EXIT         // EXIT
+
 0BDD: 49 06    | _func_DUP          // DUP
 0BDF: 49 06    | _func_DUP          // DUP
 0BE1: 7F 07    | _func_Cat          // C@
 0BE3: 49 06    | _func_DUP          // DUP
 0BE5: 50 05    | _func_lit          // (lit)
-0BE7: 20 00    | 0x0020             //     0x0020
+0BE7: 20 00    | 0x0020             //     ' '
 0BE9: 48 09    | _func_ltgt         // <>
 0BEB: B3 06    | _func_OVER         // OVER
 0BED: 26 09    | _func_zeroltgt     // 0<>
 0BEF: 86 08    | _func_AND          // AND
 0BF1: B3 06    | _func_OVER         // OVER
 0BF3: 50 05    | _func_lit          // (lit)
-0BF5: 09 00    | 0x0009             //     0x0009
+0BF5: 09 00    | 0x0009             //     '\t'
 0BF7: 48 09    | _func_ltgt         // <>
 0BF9: 86 08    | _func_AND          // AND
 0BFB: B3 06    | _func_OVER         // OVER
 0BFD: 50 05    | _func_lit          // (lit)
-0BFF: 0A 00    | 0x000A             //     0x000A
+0BFF: 0A 00    | 0x000A             //     '\n'
 0C01: 48 09    | _func_ltgt         // <>
 0C03: 86 08    | _func_AND          // AND
 0C05: B3 06    | _func_OVER         // OVER
 0C07: 50 05    | _func_lit          // (lit)
-0C09: 0D 00    | 0x000D             //     0x000D
+0C09: 0D 00    | 0x000D             //     '\r'
 0C0B: 48 09    | _func_ltgt         // <>
 0C0D: 86 08    | _func_AND          // AND
 0C0F: 0B 07    | _func_NIP          // NIP
@@ -2157,18 +2159,91 @@ _func_REVEAL:
 1301: 5C 05    | _func_EXIT         // EXIT
 
 1303: 00
+_ascii_IMMEDIATE: | "IMMEDIATE"
 1304: 49 4D 4D 45 44 49 41 54 45 00 00 E8 12
-1311: 22 C2 10 73 07 50 05 03 00 9C 07 49 06 7F 07
-1320: 50 05 01 00 93 08 8D 06 64 07 5C 05 00 28 64 6F
-1330: 65 73 29 00 00 11 13 22 2F 07 C2 10 73 07 D1 08
-1340: 38 07 5C 05 00 44 4F 45 53 3E 00 01 37 13 22 50
-1350: 05 37 13 9F 11 50 05 22 00 AF 11 50 05 43 05 9F
-1360: 11 5C 05 00 3A 00 00 4E 13 22 24 12 C2 12 50 05
-1370: 22 00 AF 11 9D 12 5C 05 00 3B 00 01 69 13 22 50
-1380: 05 5C 05 9F 11 AE 12 E8 12 5C 05 00 49 46 00 01
-1390: 7E 13 22 50 05 7D 05 9F 11 E0 10 50 05 00 00 9F
-13A0: 11 50 05 00 00 5C 05 00 54 48 45 4E 00 01 92 13
-13B0: 22 75 06 E0 10 8D 06 38 07 5C 05 00 45 4C 53 45
+1311: 22 C2 10 | ent _func_VOCAB    // VOCAB
+1314: 73 07    | _func_at           // @
+1316: 50 05    | _func_lit          // (lit)
+1318: 03 00    | 0x0003             //     0x0003
+131A: 9C 07    | _func_minus        // -
+131C: 49 06    | _func_DUP          // DUP
+131E: 7F 07    | _func_Cat          // C@
+1320: 50 05    | _func_lit          // (lit)
+1322: 01 00    | 0x0001             //     0x0001
+1324: 93 08    | _func_OR           // OR
+1326: 8D 06    | _func_SWAP         // SWAP
+1328: 64 07    | _func_Cexclamation // C!
+132A: 5C 05    | _func_EXIT         // EXIT
+
+132C: 00
+_ascii_lpdoesrp: | "(does)"
+132D: 28 64 6F 65 73 29 00 00 11 13
+1337: 22 2F 07 | ent _func_Rgt     // R>
+133A: C2 10    | _func_VOCAB       // VOCAB
+133C: 73 07    | _func_at          // @
+133E: D1 08    | _func_oneplus     // 1+
+1340: 38 07    | _func_exclamation // !
+1342: 5C 05    | _func_EXIT        // EXIT
+
+1344: 00
+_ascii_DOESgt: | "DOES>"
+1345: 44 4F 45 53 3E 00 01 37 13
+134E: 22 50 05 | ent _func_lit  // (lit)
+1351: 37 13    | _func_lpdoesrp //     _func_lpdoesrp
+1353: 9F 11    | _func_comma    // ,
+1355: 50 05    | _func_lit      // (lit)
+1357: 22 00    | 0x0022         //     0x0022
+1359: AF 11    | _func_commaC   // ,C
+135B: 50 05    | _func_lit      // (lit)
+135D: 43 05    | _func_DODOES   //     _func_DODOES
+135F: 9F 11    | _func_comma    // ,
+1361: 5C 05    | _func_EXIT     // EXIT
+
+1363: 00
+_ascii_colon:  | ":"
+1364: 3A 00 00 4E 13
+1369: 22 24 12 | _func_HEADER
+136C: C2 12    | _func_HIDE
+136E: 50 05    | _func_lit
+1370: 22 00    | 0x0022
+1372: AF 11    | _func_commaC
+1374: 9D 12    | _func_lb
+1376: 5C 05    | _func_EXIT
+
+1378: 00
+_ascii_semicolon: | ";"
+1379: 3B 00 01 69 13
+137E: 22 50 05 | _func_lit
+1381: 5C 05    | _func_EXIT
+1383: 9F 11    | _func_comma
+1385: AE 12    | _func_rb
+1387: E8 12    | _func_REVEAL
+1389: 5C 05    | _func_EXIT
+
+138B: 00
+_ascii_IF:     | "IF"
+138C: 49 46 00 01 7E 13
+1392: 22 50 05 | ent _func_lit
+1395: 7D 05    | _func_qbranch
+1397: 9F 11    | _func_comma
+1399: E0 10    | _func_HERE
+139B: 50 05    | _func_lit
+139D: 00 00    | 0x0000
+139F: 9F 11    | _func_comma
+13A1: 50 05    | _func_lit
+13A3: 00 00    | 0x0000
+13A5: 5C 05    | _func_EXIT
+
+13A7: 00
+_ascii_THEN:   | "THEN"
+13A8: 54 48 45 4E 00 01 92 13
+13B0: 22 75 06 | ent _func_DROP    // DROP
+13B3: E0 10    | _func_HERE        // HERE
+13B5: 8D 06    | _func_SWAP        // SWAP
+13B7: 38 07    | _func_exclamation // !
+13B9: 5C 05    | _func_EXIT        // EXIT
+
+13BB: 00 45 4C 53 45
 13C0: 00 01 B0 13 22 75 06 50 05 6B 05 9F 11 E0 10 50
 13D0: 05 00 00 9F 11 8D 06 E0 10 8D 06 38 07 50 05 00
 13E0: 00 5C 05 00 2E 22 00 01 C4 13 22 50 05 E2 0F 9F
