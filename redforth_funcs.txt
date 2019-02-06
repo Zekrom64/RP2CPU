@@ -34,7 +34,7 @@ Notes:
  0681 | 2DROP     | Pops two values and discards them
  068D | SWAP      | Swaps the top two values
  069B | PICK      | Pops a value, indexes into the stack with it, pushes the indexed value
- 06BE | OVER      | Pushes a copy of the value below the top
+ 06B3 | OVER      | Pushes a copy of the value below the top
  06C1 | 2OVER     | Pushes a copy of the value two elements into the stack
  06CD | ROT       | Rotates the top 3 values once into the stack
  06DE | 2SWAP     | Swaps two values on top with the two values below those
@@ -75,6 +75,7 @@ Notes:
  0909 | RP!       | Sets the value of the call stack pointer
  0913 | 0=        | Pops a value, pushes TRUE if equal to 0, FALSE otherwise
  0926 | 0<>       | Pops a value, pushes TRUE if not equal to 0, FALSE otherwise
+ 0936 | 0<        | Pops a value, pushes TRUE if greater than 0, FALSE otherwise
  0948 | <>        | Pops two values, pushes TRUE if not equal, FALSE otherwise
  095D | <         | Pops two values, pushes TRUE if the top is greater, FALSE otherwise
  0974 | >         | Pops two values, pushes TRUE if the top is less, FALSE otherwise
@@ -87,6 +88,7 @@ Notes:
  0A0B | CELLS     | Pops a number, pushes the size of memory for this number of cells
  0A18 | MAX       | Pops two numbers, pushes the maximum value
  0A28 | MIN       | Pops two numbers, pushes the minimum value
+ 0A39 | MOVE      | Copies S[0] bytes of memory from S[2] to S[1], pops all 3 values
  0A58 | FILL      | Fills S[1] bytes of memory at S[2] with S[0], pops all 3 values
  0A76 | MEMCMP    | Does a C-style memcmp between S[0] bytes at S[2] and S[1], pops values and pushes result
  0AA9 | STRLEN    | Pops a string address, pushes the number of characters in the string
@@ -101,8 +103,12 @@ Notes:
  0B98 | WORD      | ?
  0C3B | SPLIT     | Splits string S[1] by character S[0], pops both values, pushes the address of the next occurence, then the address of the first occurence
  0C8F | STRCMP    | Performs a C-style strcmp between S[1] and S[0], pops both and pushes result
- 0CA1 | ISNUM     |
- 
+ 0CAB | ISUNUM    | Pops a character, pushes a boolean if it is a number (0-9)
+ 0CE2 | ISNUM     | Pops a character, pushes a boolean if it is a number or a minus sign
+ 0CFD | UATOI     | Pops a string, parses an unsigned number from it, pushes the number
+ 0D55 | ATOI      | Pops a string, parses a signed number from it, pushes the number
+ 0D7A | HEX       | Switches the RADIX to 16
+ 0D91 | DECIMAL   | Switches the RADIX to 10
  0DA5 | TICK      | Pauses until the next 50ms tick
  0DB0 | RBP!      | Pops a value and sets the selected Redbus device to it
  0DC1 | TERMADDR  | Gets the address of the TERMADDR variable, selecting the active terminal
@@ -132,5 +138,34 @@ Notes:
  110D | PROBE     | ?
  1155 | FREE      | ?
  116A | ALLOT     | Pops a number and allocates that number of byte of memory, pushes the pointer
+ 119F | ,         | ?
+ 11AF | ,C        | ?
+ 11C1 | ,S        | ?
+ 11EC | TIBWORD   | ?
+ 1208 | TIBSPLIT  | ?
+ 1224 | HEADER    | ?
+ 1250 | CONSTANT  | ?
+ 126E | CREATE    | ?
+ 128C | VARIABLE  | ?
+ 129D | [         | ?
+ 12AE | ]         | ?
+ 12C2 | HIDE      | Hides a word
+ 12E8 | REVEAL    | Reveals a word
  
+ 1678 | SP0       | Pushes the base address of the value stack
+ 1685 | RP0       | Pushes the base address of the call stack
+ 1694 | >NAME     | ?
+ 16AF | NAME>     | ?
+ 16C7 | FIND      | ?
+ 1719 | ACCEPT    | ?
+ 1778 | 0SP       | Clears the stack
+ 178D | INTERPRET | ?
+ 1829 | QUIT      | Quits to the FORTH shell
+ 18B6 | DEPTH     | ?
+ 19D8 | DISKADDR  | Pushes the address of the DISKADDR variable
+ 19EB | DISKNAME" | Sets the name of the selected disk
+ 1A31 | DISKID    | 
+ 1A75 | DISKWS    |
+ 
+ 1D56 | COLD      | Soft-reboots the interpreter, doesn't reset word list
  
