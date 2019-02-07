@@ -11,7 +11,7 @@ Notes:
 	Some functions like UITOA use "scratch space" for strings, which are easily overwritten
 	Memory allocations for compilation and variables are allocated sequentially after the interpreter
 		
-	Expressions:
+	Variables:
 		TIB - Terminal input buffer, read from the FORTH shell
 		TIBPTR - Pointer into TIB, at next word to parse
 		SCRATCH - Address of 64 bytes of "scratch space" for short operations
@@ -107,7 +107,7 @@ Notes:
  0B2B | RADIX     | Pushes the address of the RADIX variable for string-number conversion
  0B37 | BL        | Pushes the space character
  0B46 | UITOA     | Pops and unsigned number and pushes a string address of the stringified number
- 0B98 | WORD      | Pops a string, trims leading whitespace, pushes the 
+ 0B98 | WORD      | Pops a string, trims leading whitespace, pushes the address of the end of the next word, then the address of the start
  0C3B | SPLIT     | Splits string S[1] by character S[0], pops both values, pushes the address of the next occurence, then the address of the first occurence
  0C8F | STRCMP    | Performs a C-style strcmp between S[1] and S[0], pops both and pushes result
  0CAB | ISUNUM    | Pops a character, pushes a boolean if it is a number (0-9)
