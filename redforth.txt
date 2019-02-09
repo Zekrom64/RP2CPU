@@ -14,7 +14,7 @@
 //     00 <name> 00 <flags> <address>
 //
 //     Flag Bits:
-//       0: 
+//       0: "Immediate" (?)
 //       1: Hidden (Not shown in WORDS)
 
 // FORTH words always have 'native' entry points with 65EL02
@@ -35,7 +35,7 @@
 //            2 DUP +
 //            ;
 //
-//        Precompiled FORTH:
+//        Compiled FORTH:
 //        // Header
 //        ----: 00
 //        _ascii_FOUR:   | "FOUR"
@@ -149,9 +149,10 @@ _ascii_do:     | "(do)"
 0598: 00 
 _ascii_qdo:    | "(?do)"
 0599: 28 3F 64 6F 29 00 00 8D 05
-05A2: 42       | nxa
+_func_qdo:
+05A2: 42       | nxa              // Next word is break address into X
 05A3: AA       | tax
-05A4: A3 02    | lda [S+0x02]
+05A4: A3 02    | lda [S+0x02]     // S[1] -> A
 05A6: 4B       | rha
 05A7: 68       | pla
 05A8: 38       | sec
@@ -640,6 +641,7 @@ _func_UMslashMOD:
 083E: 00
 _ascii_2star:  | "2*"
 083F: 32 2A 00 00 32 08
+_func_2star:
 0845: 68       | pla
 0846: 18       | clc
 0847: 2A       | rol A
@@ -650,6 +652,7 @@ _ascii_2star:  | "2*"
 084A: 00
 _ascii_2slash: | "2/"
 084B: 32 2F 00 00 45 08
+_func_2slash:
 0851: A3 00    | lda [S+0x00]
 0853: 2A       | rol A
 0854: 68       | pla
@@ -2331,89 +2334,89 @@ _func_NAMEgt:
 _ascii_FIND:   | "FIND"
 16BF: 46 49 4E 44 00 00 AF 16
 _func_FIND:
-16C7: 22 C2 10 | ent _func_VOCAB
-16CA: 73 07    | _func_at
-16CC: 49 06    | _func_DUP
-16CE: 7D 05    | _func_qbranch
-16D0: 04 17    | 0x1704
-16D2: 65 06    | _func_2DUP
-16D4: 94 16    | _func_gtNAME
-16D6: 8F 0C    | _func_STRCMP
-16D8: 13 09    | _func_zeroeq
-16DA: B3 06    | _func_OVER
-16DC: 50 05    | _func_lit
-16DE: 03 00    | 0x0003
-16E0: 9C 07    | _func_minus
-16E2: 7F 07    | _func_Cat
-16E4: 50 05    | _func_lit
-16E6: 02 00    | 0x0002
-16E8: 86 08    | _func_AND
-16EA: 13 09    | _func_zeroeq
-16EC: 86 08    | _func_AND
-16EE: 7D 05    | _func_qbranch
-16F0: F8 16    | 0x16F8
-16F2: EF 0A    | _func_TRUE
-16F4: 6B 05    | _func_branch
-16F6: 00 17    | 0x1700
-16F8: FD 09    | _func_CELL
-16FA: 9C 07    | _func_minus
-16FC: 73 07    | _func_at
-16FE: FE 0A    | _func_FALSE
-1700: 6B 05    | _func_branch
-1702: 06 17    | 0x1706
-1704: EF 0A    | _func_TRUE
-1706: 7D 05    | _func_qbranch
-1708: CC 16    | 0x16CC
-170A: 0B 07    | _func_NIP
-170C: 5C 05    | _func_EXIT
+16C7: 22 C2 10 | ent _func_VOCAB // VOCAB
+16CA: 73 07    | _func_at        // @
+16CC: 49 06    | _func_DUP       // DUP
+16CE: 7D 05    | _func_qbranch   // (?branch)
+16D0: 04 17    | 0x1704          //     0x1704
+16D2: 65 06    | _func_2DUP      // 2DUP
+16D4: 94 16    | _func_gtNAME    // >NAME
+16D6: 8F 0C    | _func_STRCMP    // STRCMP
+16D8: 13 09    | _func_zeroeq    // 0=
+16DA: B3 06    | _func_OVER      // OVER
+16DC: 50 05    | _func_lit       // (lit)
+16DE: 03 00    | 0x0003          //    0x0003
+16E0: 9C 07    | _func_minus     // -
+16E2: 7F 07    | _func_Cat       // C@
+16E4: 50 05    | _func_lit       // (lit)
+16E6: 02 00    | 0x0002          //     0x0002
+16E8: 86 08    | _func_AND       // AND
+16EA: 13 09    | _func_zeroeq    // 0=
+16EC: 86 08    | _func_AND       // AND
+16EE: 7D 05    | _func_qbranch   // (?branch)
+16F0: F8 16    | 0x16F8          //     0x16F8
+16F2: EF 0A    | _func_TRUE      // TRUE
+16F4: 6B 05    | _func_branch    // (branch)
+16F6: 00 17    | 0x1700          //     0x1700
+16F8: FD 09    | _func_CELL      // CELL
+16FA: 9C 07    | _func_minus     // -
+16FC: 73 07    | _func_at        // @
+16FE: FE 0A    | _func_FALSE     // FALSE
+1700: 6B 05    | _func_branch    // (branch)
+1702: 06 17    | 0x1706          //     0x1706
+1704: EF 0A    | _func_TRUE      // TRUE
+1706: 7D 05    | _func_qbranch   // (?branch)
+1708: CC 16    | 0x16CC          //     0x16CC
+170A: 0B 07    | _func_NIP       // NIP
+170C: 5C 05    | _func_EXIT      // EXIT
 
 170E: 00
 _ascii_ACCEPT: | "ACCEPT"
 170F: 41 43 43 45 50 54 00 00 C7 16
 _func_ACCEPT:
-1719: 22 B3 06 | ent _func_OVER
-171C: 8F 07    | _func_plus
-171E: DC 08    | _func_oneminus
-1720: B3 06    | _func_OVER
-1722: 9E 0F    | _func_KEY
-1724: 49 06    | _func_DUP
-1736: 50 05    | _func_lit
-1738: 0D 00    | 0x000D
-173A: 48 09    | _func_ltgt
-173C: 7D 05    | _func_qbranch
-173E: 62 17    | 0x1762
-1730: 49 06    | _func_DUP
-1732: 50 05    | _func_lit
-1734: 08 00    | 0x0008
-1736: E5 09    | _func_equals
-1738: 7D 05    | _func_qbranch
-173A: 50 17    | 0x1750
-173C: 75 06    | _func_DROP
-173E: C1 06    | _func_2OVER
-1740: B3 06    | _func_OVER
-1742: 5D 09    | _func_lt
-1744: 7D 05    | _func_qbranch
-1746: 4C 17    | 0x174C
-1748: 55 0F    | _func_BS
-174A: DC 08    | 
-174C: 6B 05    | 
-174E: 5E 17    | 
-1750: 49 06    | 
-1752: 07 0F    | 
-1754: B3 06    | 
-1756: 64 07    | 
-1758: D1 08    | 
-175A: B3 06    | 
-175C: 28 0A    | 
-175E: 6B 05    | 
-1760: 22 17    | 
-1762: 75 06    | 
-1764: 28 0A    | 
-1766: 50 05    | 
-1768: 00 00    | 
-176A: 8D 06    | 
-176C: 64 07    | 
-176E: 5C 05    | 
+1719: 22 B3 06 | ent _func_OVER     // OVER
+171C: 8F 07    | _func_plus         // +
+171E: DC 08    | _func_oneminus     // 1-
+1720: B3 06    | _func_OVER         // OVER
+1722: 9E 0F    | _func_KEY          // KEY
+1724: 49 06    | _func_DUP          // DUP
+1736: 50 05    | _func_lit          // (lit)
+1738: 0D 00    | 0x000D             // 0x000D
+173A: 48 09    | _func_ltgt         // <>
+173C: 7D 05    | _func_qbranch      // (?branch)
+173E: 62 17    | 0x1762             //     0x1762
+1730: 49 06    | _func_DUP          // DUP
+1732: 50 05    | _func_lit          // (lit)
+1734: 08 00    | 0x0008             //     0x0008
+1736: E5 09    | _func_equals       // =
+1738: 7D 05    | _func_qbranch      // (?branch)
+173A: 50 17    | 0x1750             //     0x1750
+173C: 75 06    | _func_DROP         // DROP
+173E: C1 06    | _func_2OVER        // 2OVER
+1740: B3 06    | _func_OVER         // OVER
+1742: 5D 09    | _func_lt           // <
+1744: 7D 05    | _func_qbranch      // (?branch)
+1746: 4C 17    | 0x174C             //     0x174C
+1748: 55 0F    | _func_BS           // BS
+174A: DC 08    | _func_oneminus     // 1-
+174C: 6B 05    | _func_branch       // (branch)
+174E: 5E 17    | 0x175E             // 0x175E
+1750: 49 06    | _func_DUP          // DUP
+1752: 07 0F    | _func_EMIT         // EMIT
+1754: B3 06    | _func_OVER         // OVER
+1756: 64 07    | _func_Cexclamation // C!
+1758: D1 08    | _func_oneplus      // 1+
+175A: B3 06    | _func_OVER         // OVER
+175C: 28 0A    | _func_MIN          // MIN
+175E: 6B 05    | _func_branch       // (branch)
+1760: 22 17    | 0x1722             //     0x1722
+1762: 75 06    | _func_DROP         // DROP
+1764: 28 0A    | _func_MIN          // MIN
+1766: 50 05    | _func_lit          // (lit)
+1768: 00 00    | 0x0000             //     0x0000
+176A: 8D 06    | _func_SWAP         // SWAP
+176C: 64 07    | _func_Cexclamation // C!
+176E: 5C 05    | _func_EXIT         // EXIT
 
 1770: 00
 _ascii_zeroSP: | "0SP"
@@ -2537,32 +2540,162 @@ _str_: "compile: \0"
 187D: 6B 05    | _func_branch        // (branch)
 187F: 36 18    | 0x1836              //     0x1836
 
-1881: 00 57 4F 52 44 53 00 00 29 18 22 C2 10 73 07
-1890: 49 06 7D 05 A8 18 49 06 94 16 17 10 07 10 FD 09
-18A0: 9C 07 73 07 6B 05 90 18 75 06 5C 05
+1881: 00
+_ascii_WORDS:  | "WORDS"
+1882: 57 4F 52 44 53 00 00 29 18
+_func_WORDS:
+188B: 22 C2 10 | ent _func_VOCAB // VOCAB
+188E: 73 07    | _func_at        // @
+1890: 49 06    | _func_DUP       // DUP
+1892: 7D 05    | _func_qbranch   // (?branch)
+1894: A8 18    | 0x18A8          //     0x18A8
+1896: 49 06    | _func_DUP       // DUP
+1898: 94 16    | _func_gtNAME    // >NAME
+189A: 17 10    | _func_TYPE      // TYPE
+189C: 07 10    | _func_SPACE     // SPACE
+189E: FD 09    | _func_CELL      // CELL
+18A0: 9C 07    | _func_minus     // -
+18A2: 73 07    | _func_at        // @
+18A4: 6B 05    | _func_branch    // (branch)
+18A6: 90 18    | 0x1890          //     0x1890
+18A8: 75 06    | _func_DROP      // DROP
+18AA: 5C 05    | _func_EXIT      // EXIT
 
-11AC: 00
+18AC: 00
 _ascii_DEPTH:  | "DEPTH"
-11AD: 44 45 50 54 48 00 00 8B 18
+18AD: 44 45 50 54 48 00 00 8B 18
 _func_DEPTH:
-18B6: 22 E8 08 78 16 8D 06 9C 07 51
-18C0: 08 5C 05 00 2E 53 00 00 B6 18 22 B6 18 49 06 50
-18D0: 05 00 00 A2 05 E7 18 49 06 1D 06 9C 07 9B 06 34
-18E0: 10 BF 05 D7 18 14 06 75 06 5C 05 00 27 00 00 CA
-18F0: 18 22 EC 11 49 06 C7 16 56 06 13 09 7D 05 1C 19
-1900: E2 0F 55 6E 6B 6E 6F 77 6E 20 54 6F 6B 65 6E 3A
-1910: 20 00 17 10 C7 0E A1 10 6B 05 1E 19 0B 07 5C 05
-1920: 00 46 4F 52 47 45 54 00 00 F1 18 22 F1 18 49 06
-1930: 94 16 DC 08 D2 10 38 07 FD 09 9C 07 73 07 C2 10
-1940: 38 07 5C 05 00 49 4F 58 41 44 44 52 00 00 2B 19
-1950: 22 34 05 03 00 00 49 4F 58 40 00 00 50 19 22 50
-1960: 19 73 07 B0 0D 50 05 00 03 73 07 5C 05 00 49 4F
-1970: 58 21 00 00 5E 19 22 50 19 73 07 B0 0D 50 05 02
-1980: 03 38 07 5C 05 00 49 4F 58 53 45 54 00 00 76 19
-1990: 22 50 19 73 07 B0 0D 50 05 02 03 73 07 93 08 50
-19A0: 05 02 03 38 07 5C 05 00 49 4F 58 52 53 54 00 00
-19B0: 90 19 22 50 19 73 07 B0 0D B2 08 50 05 02 03 73
-19C0: 07 86 08 50 05 02 03 38 07 5C 05
+18B6: 22 E8 08 | ent _func_SPat // SP@
+18B9: 78 16    | _func_SP0      // SP0
+18BB: 8D 06    | _func_SWAP     // SWAP
+18BD: 9C 07    | _func_minus    // -
+18BF: 51 08    | _func_2slash   // 2/
+18C1: 5C 05    | _func_EXIT     // EXIT
+
+18C3: 00
+_ascii_dotS:   | ".S"
+18C4: 2E 53 00 00 B6 18
+_func_dotS:
+18CA: 22 B6 18 | ent _func_DEPTH // DEPTH      // DEPTH
+18CD: 49 06    | _func_DUP       // DUP        // DEPTH DEPTH
+18CE: 50 05    | _func_lit       // (lit)      // DEPTH DEPTH 0
+18D1: 00 00    | 0x0000          //     0x0000
+18D3: A2 05    | _func_qdo       // (?do)      // DEPTH
+18D5: E7 18    | 0x18E7          //     0x18E7
+18D7: 49 06    | _func_DUP       // DUP        // DEPTH DEPTH
+18D9: 1D 06    | _func_I         // I          // DEPTH DEPTH I
+18DB: 9C 07    | _func_minus     // -          // DEPTH DEPTH-I
+18DD: 9B 06    | _func_PICK      // PICK       // DEPTH S[DEPTH-I]
+18DF: 34 10    | _func_dot       // .          // DEPTH
+18E1: BF 05    | _func_loop      // (loop)
+18E3: D7 18    | 0x18D7          //     0x18D7
+18E5: 14 06    | _func_UNLOOP    // UNLOOP     // DEPTH
+18E7: 75 06    | _func_DROP      // DROP       //
+18E9: 5C 05    | _func_EXIT      // EXIT
+
+18EB: 00
+_ascii_apostrophe: | "\'"
+18EC: 27 00 00 CA 18
+_func_apostrophe:
+18F1: 22 EC 11 | ent _func_TIBWORD  // TIBWORD    // s
+18F4: 49 06    | _func_DUP          // DUP        // s s
+18F6: C7 16    | _func_FIND         // FIND       // s a
+18F8: 56 06    | _func_qDUP         // ?DUP       // s a a
+18FA: 13 09    | _func_zeroeq       // 0=         // s a 0=a
+18FC: 7D 05    | _func_qbranch      // (?branch)  // s a
+18FE: 1C 19    | 0x191C             //     0x191C
+1900: E2 0F    | _func_lpdotquoterp // (.")
+_str_UnknownToken: "Unknown Token: \0"
+1902: 55 6E 6B 6E 6F 77 6E 20 54 6F 6B 65 6E 3A 20 00
+1912: 17 10    | _func_TYPE         // TYPE
+1914: C7 0E    | _func_CR           // CR
+1916: A1 10    | _func_ABORT        // ABORT
+1918: 6B 05    | _func_branch       // (branch)
+191A: 1E 19    | 0x191E             //     0x191E
+191C: 0B 07    | _func_NIP          // NIP        // a
+191E: 5C 05    | _func_EXIT         // EXIT
+
+1920: 00
+_ascii_FORGET: | "FORGET"
+1921: 46 4F 52 47 45 54 00 00 F1 18
+_func_FORGET:
+192B: 22 F1 18 | ent _func_apostrophe // '
+192E: 49 06    | _func_DUP            // DUP
+1930: 94 16    | _func_gtNAME         // >NAME
+1932: DC 08    | _func_oneminus       // 1-
+1934: D2 10    | _func_lpHERErp       // (HERE)
+1936: 38 07    | _func_exclamation    // !
+1938: FD 09    | _func_CELL           // CELL
+193A: 9C 07    | _func_minus          // -
+193C: 73 07    | _func_at             // @
+193E: C2 10    | _func_VOCAB          // VOCAB
+1940: 38 07    | _func_exclamation    // !
+1942: 5C 05    | _func_EXIT           // EXIT
+
+1944: 00
+_ascii_IOXADDR: | "IOXADDR"
+1945: 49 4F 58 41 44 44 52 00 00 2B 19
+_func_IOXADDR:
+1950: 22 34 05 | ent _func_DOVAR
+_var_IOXADDR:
+1953: 03 00
+
+1955: 00
+_ascii_IOXat:  | "IOX@"
+1956: 49 4F 58 40 00 00 50 19
+_func_IOXat
+195E: 22 50 19 | ent _func_IOXADDR    // IOXADDR
+1961: 73 07    | _func_at             // @
+1963: B0 0D    | _func_RBPexclamation // RBP!
+1965: 50 05    | _func_lit            // (lit)
+1967: 00 03    | 0x0300               //     0x0300
+1969: 73 07    | _func_at             // @
+196B: 5C 05    | _func_EXIT           // EXIT
+
+196D: 00
+_ascii_IOXexclamation: | "IOX!"
+196E: 49 4F 58 21 00 00 5E 19
+_func_IOXexclamation:
+1976: 22 50 19 | _func_IOXADDR        // IOXADDR
+1979: 73 07    | _func_at             // @
+197B: B0 0D    | _func_RBPexclamation // RBP!
+197D: 50 05    | _func_lit            // (lit)
+197F: 02 03    | 0x0302               //     0x0302
+1981: 38 07    | _func_exclamation    // !
+1983: 5C 05    | _func_EXIT           // EXIT
+
+1985: 00
+_ascii_IOXSET: | "IOXSET"
+1986: 49 4F 58 53 45 54 00 00 76 19
+_func_IOXSET:
+1990: 22 50 19 | _func_IOXADDR        // IOXADDR
+1993: 73 07    | _func_at             // @
+1995: B0 0D    | _func_RBPexclamation // RBP!
+1997: 50 05    | _func_lit            // (lit)
+1999: 02 03    | 0x0302               //     0x0302
+199B: 73 07    | _func_at             // @
+199D: 93 08    | _func_OR             // OR
+199F: 50 05    | _func_lit            // (lit)
+19A1: 02 03    | 0x0302               //     0x0302
+19A3: 38 07    | _func_exclamation    // !
+19A5: 5C 05    | _func_EXIT           // EXIT
+
+19A7: 00
+_ascii_IOXRST: | "IOXRST"
+19A8: 49 4F 58 52 53 54 00 00 90 19
+_func_IOXRST:
+19B2: 22 50 19 | _func_IOXADDR        // IOXADDR
+19B5: 73 07    | _func_at             // @
+19B7: B0 0D    | _func_RBPexclamation // RBP!
+19B9: B2 08    | _func_INVERT         // INVERT
+19BB: 50 05    | _func_lit            // (lit)
+19BD: 02 03    | 0x0302               //     0x0302
+19BF: 73 07    | _func_at             // @
+19C1: 86 08    | _func_AND            // AND
+19C3: 50 05    | _func_lit            // (lit)
+19C5: 02 03    | 0x0302               //     0x0302
+19C7: 38 07    | _func_exclamation    // !
+19C9: 5C 05    | _func_EXIT           // EXIT
 
 19CB: 00
 _ascii_DISKADDR: | "DISKADDR"
@@ -2610,49 +2743,90 @@ _func_DISKNAME:
 _ascii_DISKID: | "DISKID"
 1A27: 44 49 53 4B 49 44 00 00 EB 19
 _func_DISKID:
-1A31: 22 D8 19
-1A34: 73 07
-1A36: B0 0D
-1A38: 50 05
-1A3A: 03 00
-1A3C: 50 05
-1A3E: 82 03
-1A40: 64 07
-1A42: 50 05
-1A44: 82 03
-1A46: 7F 07
-1A48: 50 05
-1A4A: 03 00
-1A4C: E5 09
-1A4E: 7D 05
-1A50: 58 1A
-1A52: A5 0D
-1A54: 6B 05
-1A56: 42 1A
-1A58: 50 05
-1A5A: 00 03
-1A5C: 0F 0B
-1A5E: 50 05
-1A60: 40 00
-1A62: 39 0A
-1A64: 0F 0B
-1A66: 17 10
-1A68: 5C 05
+1A31: 22 D8 19 | ent _func_DISKADDR   // DISKADDR
+1A34: 73 07    | _func_at             // @
+1A36: B0 0D    | _func_RBPexclamation // RBP!
+1A38: 50 05    | _func_lit            // (lit)
+1A3A: 03 00    | 0x0003               //     0x0003
+1A3C: 50 05    | _func_lit            // (lit)
+1A3E: 82 03    | 0x0382               //     0x0382
+1A40: 64 07    | _func_Cexclamation   // C!
+1A42: 50 05    | _func_lit            // (lit)
+1A44: 82 03    | 0x0382               //     0x0382
+1A46: 7F 07    | _func_Cat            // C@
+1A48: 50 05    | _func_lit            // (lit)
+1A4A: 03 00    | 0x0003               //     0x0003
+1A4C: E5 09    | _func_equal          // =
+1A4E: 7D 05    | _func_qbranch        // (?branch)
+1A50: 58 1A    | 0x1A58               //     0x1A58
+1A52: A5 0D    | _func_TICK           // TICK
+1A54: 6B 05    | _func_branch         // (branch)
+1A56: 42 1A    | 0x1A42               //     0x1A42
+1A58: 50 05    | _func_lit            // (lit)
+1A5A: 00 03    | 0x0300               //     0x0300
+1A5C: 0F 0B    | _func_SCRATCH        // SCRATCH
+1A5E: 50 05    | _func_lit            // (lit)
+1A60: 40 00    | 0x0040               //     0x0040
+1A62: 39 0A    | _func_MOVE           // MOVE
+1A64: 0F 0B    | _func_SCRATCH        // SCRATCH
+1A66: 17 10    | _func_TYPE           // TYPE
+1A68: 5C 05    | _func_EXIT           // EXIT
 
 1A6A: 00
 _ascii_DISKWS:
 1A6B: 44 49 53 4B 57 53 00 00 31 1A
-1A75: 22 D8 19 | ent _
-1A78: 73 07
-1A7A: B0 0D
-1A7C: 50 05
-1A7E: 80 03
-1A80: 38 07 50 05 00 03 50 05 80 00 39 0A 50 05 05 00
-1A90: 50 05 82 03 64 07 50 05 82 03 7F 07 50 05 05 00
-1AA0: E5 09 7D 05 AC 1A A5 0D 6B 05 96 1A 5C 05 00 44
-1AB0: 49 53 4B 52 53 00 00 75 1A 22 D8 19 73 07 B0 0D
-1AC0: 50 05 80 03 38 07 50 05 04 00 50 05 82 03 64 07
-1AD0: 50 05 82 03 7F 07 50 05 04 00 E5 09 7D 05 E6 1A
+                                                    // d s
+1A75: 22 D8 19 | ent _func_DISKADDR   // DISKADDR   // d s DISKADDR
+1A78: 73 07    | ent _func_at         // @          // d s [DISKADDR]
+1A7A: B0 0D    | _func_RBPexclamation // RBP!       // d s
+1A7C: 50 05    | _func_lit            // (lit)      // d s x380
+1A7E: 80 03    | 0x0380               //     0x0380
+1A80: 38 07    | _func_exclamation    // !          // d
+1A82: 50 05    | _func_lit            // (lit)      // d x300
+1A84: 00 03    | 0x0300               //     0x0300
+1A86: 50 05    | _func_lit            // (lit)      // d x300 x80
+1A88: 80 00    | 0x0080               //     0x0080
+1A8A: 39 0A    | _func_MOVE           // MOVE       //
+1A8C: 50 05    | _func_lit            // (lit)      // 5
+1A8E: 05 00    | 0x0005               //     0x0005
+1A90: 50 05    | _func_lit            // (lit)      // 5 x382
+1A92: 82 03    | 0x0382               //     0x0382
+1A94: 64 07    | _func_Cexclamation   // C!         //
+1A96: 50 05    | _func_lit            // (lit)      // x382
+1A98: 82 03    | 0x0382               //     0x0382
+1A9A: 7F 07    | _func_Cat            // C@         // [x382]
+1A9C: 50 05    | _func_lit            // (lit)      // [x382] 5
+1A9E: 05 00    | 0x0005               //     0x0005
+1AA0: E5 09    | _func_equals         // =          // [x382]=5
+1AA2: 7D 05    | _func_qbranch        // (?branch)
+1AA4: AC 1A    | 0x1AAC               //     0x1AAC
+1AA6: A5 0D    | _func_TICK           // TICK
+1AA8: 6B 05    | _func_branch         // (branch)
+1AAA: 96 1A    | 0x1A96               //     0x1A96
+1AAC: 5C 05    | _func_EXIT           // EXIT
+
+1AAE: 00
+_ascii_DISKRS
+AEEF: 44 49 53 4B 52 53 00 00 75 1A
+1AB9: 22 D8 19
+1ABC: 73 07
+1ABE: B0 0D
+1AC0: 50 05
+1AC2: 80 03
+1AC4: 38 07
+1AC6: 50 05
+1AC8: 04 00
+1ACA: 50 05
+1ACC: 82 03
+1ACE: 64 07
+1AD0: 50 05
+1AD2: 82 03
+1AD4: 7F 07
+1AD6: 50 05
+1AD8: 04 00
+1ADA: E5 09
+1ADC: 7D 05
+1ADE: E6 1A
 1AE0: A5 0D 6B 05 D0 1A 50 05 00 03 8D 06 50 05 80 00
 1AF0: 39 0A 5C 05 00 53 41 56 45 22 00 00 B9 1A 22 EB
 1B00: 19 50 05 00 05 E0 10 50 05 81 04 9C 07 50 05 07

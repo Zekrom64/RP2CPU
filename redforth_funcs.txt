@@ -149,7 +149,7 @@ Notes:
  11AF | ,C        | Appends a character to allocated memory
  11C1 | ,S        | Appends a string to allocated memory
  11EC | TIBWORD   | Reads a string from the terminal input buffer and pushes it
- 1208 | TIBSPLIT  | Performs a SPLIT operation on the TIB, 
+ 1208 | TIBSPLIT  | Performs a SPLIT operation on the TIB with a character on the stack, updates TIBPTR
  1224 | HEADER    | Builds a header for a new FORTH word
  1250 | CONSTANT  | Pops a value and converts it to a FORTH constant
  126E | CREATE    | Builds a header for a new FORTH variable
@@ -168,18 +168,27 @@ Notes:
  
  1678 | SP0       | Pushes the base address of the value stack
  1685 | RP0       | Pushes the base address of the call stack
- 1694 | >NAME     | ?
+ 1694 | >NAME     | Pops a call address and pushes the address of its word name string
  16AF | NAME>     | ?
- 16C7 | FIND      | ?
- 1719 | ACCEPT    | ?
+ 16C7 | FIND      | Pops a string, pushes the call address of the word with the same name, or 0xFFFF if not found
+ 1719 | ACCEPT    | Inputs a string to a memory buffer at address S[1] of size S[0]
  1778 | 0SP       | Clears the stack
- 178D | INTERPRET | ?
+ 178D | INTERPRET | Parses the terminal input buffer, appending the compiled program to allocated memory
  1829 | QUIT      | Quits to the FORTH shell
- 18B6 | DEPTH     | ?
+ 188B | WORDS     | Prints the names of every non-hidden FORTH word
+ 18B6 | DEPTH     | Pushes the number of values currently on the stack
+ 18CA | .S        | Prints the list of values on the stack
+ 18F1 | '         | Pushes the call address of the next word
+ 192B | FORGET    | "Forgets" a word, removing it from the word list
+ 1950 | IOXADDR   | Pushes the address of the IOXADDR variable
+ 195E | IOX@      | Pushes the input value of the IO expander
+ 1976 | IOX!      | Pops a value and sets the output value of the IO expander
+ 1990 | IOXSET    | Pops a value and bitwise ORs the output value of the IO expander
+ 19B2 | IOXRST    | Pops a value, inverts, and bitwise ANDs the output value of the IO expander
  19D8 | DISKADDR  | Pushes the address of the DISKADDR variable
  19EB | DISKNAME" | Sets the name of the selected disk
- 1A31 | DISKID    | 
- 1A75 | DISKWS    |
+ 1A31 | DISKID    | Copies the disk name to SCRATCH, then prints it
+ 1A75 | DISKWS    | Writes 128 bytes from the address at S[1] to sector S[0] of the current disk, pops both values
  
  1D56 | COLD      | Soft-reboots the interpreter, doesn't reset word list
  
