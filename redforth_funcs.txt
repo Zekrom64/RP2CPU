@@ -15,6 +15,8 @@ Notes:
 		TIB - Terminal input buffer, read from the FORTH shell
 		TIBPTR - Pointer into TIB, at next word to parse
 		SCRATCH - Address of 64 bytes of "scratch space" for short operations
+		TOP - Top of available memory
+		STATE - 1 if compiling, 0 if interpreting
 
  Addr | Name      | Function
 ===============================================================================
@@ -25,10 +27,10 @@ Notes:
  055C | EXIT      | Return
  056B | (branch)  | Jump to next word as call list address
  057D | (?branch) | Pop value, if zero execute as (branch), else skip next word
- 058D | (do)      | ?
- 05A2 | (?do)     | ?
- 05BF | (loop)    | ?
- 05DE | (+loop)   | ?
+ 058D | (do)      | Sets up a do loop, iterating from S[0] to S[1], skips the next word (which is the break address)
+ 05A2 | (?do)     | Sets up a do loop, only iterating if S[0] is not S[1], else jumps to the address given by the next word
+ 05BF | (loop)    | Increments the do loop variable, jumping to the address given by the next word while iterating, else skips it
+ 05DE | (+loop)   | Same as (loop), but pops the top of the stack and adds, instead of incrementing
  05F5 | (leave)   | Pop loop variables and jump to call list address at address of next word
  0614 | UNLOOP    | Pop loop variables and continue
  061D | I         | Push value of inner loop counter
@@ -142,8 +144,8 @@ Notes:
  10E0 | HERE      | Pushes the HERE address
  10EF | TOP       | Pushes the address of the TOP variable
  10FE | STATE     | Pushes the address of the STATE variable
- 110D | PROBE     | ?
- 1155 | FREE      | ?
+ 110D | PROBE     | Computes and pushes the amount of free memory available
+ 1155 | FREE      | Pushes the amount of free memory available
  116A | ALLOT     | Pops a number and allocates that number of byte of memory, pushes the pointer
  119F | ,         | Appends a word to allocated memory
  11AF | ,C        | Appends a character to allocated memory
@@ -158,18 +160,37 @@ Notes:
  12AE | ]         | Switches the FORTH shell into interpretation mode
  12C2 | HIDE      | Hides a word
  12E8 | REVEAL    | Reveals a word
- 1311 | IMMEDIATE | Makes a FORTH word "immediate"
- 1337 | (does)    | ?
- 134E | DOES>     | ?
+ 1311 | IMMEDIATE | Makes a FORTH word "immediate", it will execute when used at compile-time
+ 1337 | (does)    | Sets the address of the new word's ENT instruction to the return address
+ 134E | DOES>     | Builds the next word to invoke the following instructions
  1369 | :         | Starts compiling a new FORTH word
  137E | ;         | Signals the end of compiling a FORTH word
- 1392 | IF        |
- 13B0 | THEN      | 
- 
+ 1392 | IF        | Begins an IF statement, pops a value and only executes the code until THEN if not 0
+ 13B0 | THEN      | Terminates an IF statement
+ 13C4 | ELSE      | After an IF statement, code after will only execute until THEN if the IF condition is 0
+ 13FA | ."        | Prints the following string
+ 1405 | BEGIN     | Begins a boolean-controlled BEGIN loop
+ 1418 | AGAIN     | Unconditionally jumps to the last BEGIN, forming an infinite loop
+ 142F | UNTIL     | Pops a value and jumps to the last BEGIN if the value is 0
+ 1446 | WHILE     | Pops a value and jumps to the last BEGIN on REPEAT if the value is not 0
+ 1466 | REPEAT    | Jumps to the last BEGIN if the last value from WHILE is not 0
+ 1484 | DO        | Begins a DO loop, iterating from S[1]-1 to S[0]
+ 14A1 | ?DO       | Begins a DO loop, iterating from S[1]-1 to S[0] only if they are not equal
+ 14BF | LOOP      | Loops a DO loop, incrementing the loop counter
+ 14E2 | +LOOP     | Loops a DO loop, poping a value and adding it to the loop counter
+ 1536 | \         | Pushes a string from the TIB up to the next line
+ 1547 | (         | Pushes a string from the TIB up to the next ')'
+ 155A | (")       | Pushes the address of null-terminated string in the call list, continues after the string
+ 1579 | "         | Appends a string push to the call list of the word being created
+ 1594 | TIMES     | Pops a value and repeats the next word that number of times
+ 15FF | LITERAL   | Appends a call address push of the next word to the call list of the word being created
+ 1619 | POSTPONE  | Indirects the action of the next word (immediates are compiled instead of executed, normal words push call address)
+ 164C | RECURSE   | Appends the call address of the word being created to itself
+ 165F | TICKS     | Pops a number and waits that many ticks
  1678 | SP0       | Pushes the base address of the value stack
  1685 | RP0       | Pushes the base address of the call stack
  1694 | >NAME     | Pops a call address and pushes the address of its word name string
- 16AF | NAME>     | ?
+ 16AF | NAME>     | Pops and address of a word name string and pushes its call address +2 (?@#!)
  16C7 | FIND      | Pops a string, pushes the call address of the word with the same name, or 0xFFFF if not found
  1719 | ACCEPT    | Inputs a string to a memory buffer at address S[1] of size S[0]
  1778 | 0SP       | Clears the stack
@@ -178,7 +199,7 @@ Notes:
  188B | WORDS     | Prints the names of every non-hidden FORTH word
  18B6 | DEPTH     | Pushes the number of values currently on the stack
  18CA | .S        | Prints the list of values on the stack
- 18F1 | '         | Pushes the call address of the next word
+ 18F1 | '         | Pushes the call address of the next word from the input
  192B | FORGET    | "Forgets" a word, removing it from the word list
  1950 | IOXADDR   | Pushes the address of the IOXADDR variable
  195E | IOX@      | Pushes the input value of the IO expander
@@ -189,6 +210,36 @@ Notes:
  19EB | DISKNAME" | Sets the name of the selected disk
  1A31 | DISKID    | Copies the disk name to SCRATCH, then prints it
  1A75 | DISKWS    | Writes 128 bytes from the address at S[1] to sector S[0] of the current disk, pops both values
- 
+ 1AB9 | DISKRS    | Reads 128 bytes from sector S[0] of the current disk, copies them to address S[1], pops both values
+ 1AFE | SAVE"     | Saves the contents of memory to the current disk, setting its name to the next word
+ 1B3C | (blkbuf)  | ?
+ 1B4D | (blkno)   | ?
+ 1B5E | (blkup)   | ?
+ 1B6D | FLUSH     | ?
+ 1BB7 | REVERT    | ?
+ 1C00 | BLOCK     | ?
+ 1C4C | UPDATE    | ?
+ 1C60 | LIST      | ?
+ 1CBA | WIPE      | ?
+ 1D0C | LOAD      | ?
  1D56 | COLD      | Soft-reboots the interpreter, doesn't reset word list
+ 
+Extended Forth:
+
+Notes:
+	Some addresses are different in extended FORTH, but the functions are the same
+
+ 1D73 | SORTADDR  | Pushes the address of the SORTADDR variable
+ 1D84 | SORTCMD   | Pops a number and executes that as a sort command
+ 1DDC | SORTSLOTS | Pushes the number of slots in the connected inventory
+ 1E2D | SORTPULL  | Commands the Sorton to pull S[1] items from slot S[0] of the connected inventory, pops both values
+ 1E5D | SORTCOLOR@| Pushes the color to apply to pulled items
+ 1E7B | SORTCOLOR!| Pops and sets the color to apply to pulled items
+ 1E97 | SORTPAT@  | Pushes the item type, MSB first
+ 1EB9 | SORTPAT!  | Pops and sets the item type, LSB first
+ 1EDD | SORTINCOL@| Pushes the color to filter accepted items
+ 1EFB | SORTINCOL!| Pops and sets the color to filter accepted items
+ 1F17 | SORTDMG   | Pushes the item damage (metadata) value
+ 1F36 | SORTDMGMAX| Pushes the maximum item damage value
+ 1F53 | SORTMATCH | Pops a number and commands the Sortron to accept this number of items
  

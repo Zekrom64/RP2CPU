@@ -17,6 +17,11 @@
 //       0: "Immediate" (?)
 //       1: Hidden (Not shown in WORDS)
 
+// FORTH programs heavily rely on "special" words that have parenthesis
+//     in their names (eg. (lit)). These are unintended to be used directly
+//     by the programmer, and often interpret the following information in the
+//     call list as data or an address.
+
 // FORTH words always have 'native' entry points with 65EL02
 //    machine code. To go to the next word in the program, the
 //    NXT instruction jumps the next word's native entry point
@@ -50,6 +55,20 @@
 //        ----: 8F 07    | _func_plus    // +
 //        ----: 5C 05    | _func_EXIT    // EXIT
 // 
+
+// DO loops are implemented by pushing the maximum value to the R-stack, followed by the
+//     difference between the start and the end (eg. 0 - 10, this is intentionally
+//     negative). This is done by a (do) or (?do) command, both of which are followed by
+//     the call list address to jump if the loop doesn't execute (this is only checked by
+//     the (?do) command, even though both have the address). The loop body follows, which
+//     may have a (leave) command which follows with the same address as a (?do), and will
+//     clean up the loop variables before jumping. The loop is done by a (loop) or (?loop)
+//     command which are both followed by the call list address to loop to. (loop) will
+//     increment the count variable (the difference) until it overflows, signalling the loop
+//     is finished, where it will continue execution after it. If it is still looping, it will
+//     jump to the loop address. (+loop) is the same, but pops a value to add to the loop variable
+//     instead of incrementing by 1. DO loops are followed by an UNLOOP command, which cleans up
+//     the stack if the loop exits normally after the (loop) or (+loop) command.
 
 _start:
 0500: 18       | clc         // Clear emulation flag
@@ -133,89 +152,96 @@ _func_qbranch:
 0582: 5C       | txi
 0583: 02       | nxt
 
+// Sets up a do loop on the stacks, skips the next word
 0584: 00
 _ascii_do:     | "(do)"
 0585: 28 64 6F 29 00 00 7D 05
-058D: 42       | nxa         // Next word into A
-058E: A3 02    | lda [S+0x02]// Load A with S[1]
-0590: 4B       | rha         // Push A to call stack
-0591: 68       | pla         // Pop S[0]
+_func_do:
+058D: 42       | nxa          // Next word into A
+058E: A3 02    | lda [S+0x02] // Load A with S[1]
+0590: 4B       | rha          // Push A to call stack
+0591: 68       | pla          // Pop S[0]
 0592: 38       | sec
-0593: E3 00    | sbc [S+0x03]
-0595: 4B       | rha         // Push 
-0596: 68       | pla         // Pop
+0593: E3 00    | sbc [S+0x00] // S[0] - S[1]
+0595: 4B       | rha          // Push S[0] - S[1] to R
+0596: 68       | pla          // Pop S[1]
 0597: 02       | nxt
 
+// Same as (do), but will not execute loop if there is no difference to iterate, jumps to address in next word
 0598: 00 
 _ascii_qdo:    | "(?do)"
 0599: 28 3F 64 6F 29 00 00 8D 05
 _func_qdo:
-05A2: 42       | nxa              // Next word is break address into X
+05A2: 42       | nxa              // Save break address
 05A3: AA       | tax
 05A4: A3 02    | lda [S+0x02]     // S[1] -> A
-05A6: 4B       | rha
-05A7: 68       | pla
-05A8: 38       | sec
-05A9: E3 00    | sbc [S+0x03]
+05A6: 4B       | rha              // Push A to R
+05A7: 68       | pla              // Pop S[0]
+05A8: 38       | sec              // S[0] - S[1]
+05A9: E3 00    | sbc [S+0x00]
 05AB: F0 03    | beq _br_qdo_zero
-05AD: 4B       | rha
-05AE: 68       | pla
+05AD: 4B       | rha              // Push S[0] - S[1] to R
+05AE: 68       | pla              // Pop S[1]
 05AF: 02       | nxt
 _br_loop_zero:
-05B0: 6B       | rla
-05B1: 68       | pla
-05B2: 5C       | txi
+05B0: 6B       | rla              // Pop A from R
+05B1: 68       | pla              // Pop S[1]
+05B2: 5C       | txi              // Jump to break address
 05B3: 02       | nxt
 
+// Increments the do loop variable, if not done iterating jumps to address in next word
 05B4: 00
 _ascii_loop:   | "(loop)"
 05B5: 28 6C 6F 6F 70 29 00 00 A2 05
-05BF: 42       | nxa
+_func_loop:
+05BF: 42       | nxa              // Save loop address
 05C0: AA       | tax
-05C1: A7 00    | lda [R+0x00]
+05C1: A7 00    | lda [R+0x00]     // R[0]++
 05C3: 1A       | inc A
 05C4: 47 00    | eor [R+0x00]
-05C6: 89 00 80 | bit 0x8000
+05C6: 89 00 80 | bit 0x8000       // If not overflow
 05C9: D0 01    | bne _br_qloop_nzero
-05CB: 5C       | txi
+05CB: 5C       | txi              // Jump to loop address
 _br_qloop_nzero:
-05CC: A7 00    | lda [R+0x00]
+05CC: A7 00    | lda [R+0x00]     // Increment loop counter
 05CE: 1A       | inc A
 05CF: 87 00    | sta [R+0x00] 
 05D1: 02       | nxt
 
+// Same as (loop), but pops a value and adds to the loop counter instead of incrementing by 1
 05D2: 00
 _ascii_ploop:  | "(+loop)"
 05D3: 28 2B 6C 6F 6F 70 29 00 00 BF 05
-05DE: 42       | nxa
+_func_ploop:
+05DE: 42       | nxa          // Save loop address
 05DF: AA       | tax
-05E0: A3 00    | lda [S+0x00]
+05E0: A3 00    | lda [S+0x00] // Add top of stack to loop counter
 05E2: 18       | clc
 05E3: 67 00    | adc [R+0x00]
-05E4: 47 00    | eor [R+0x00]
+05E4: 47 00    | eor [R+0x00] // If not overflow
 05E6: 89 00 80 | bit 0x8000
-05E9: D0 01    | bne 0x01
+05E9: D0 01    | bne 0x01     // Jump to loop address
 05EB: 5C       | txi
-05EC: 18       | clc
+05EC: 18       | clc          // Save sum of top and loop counter to loop counter
 05ED: 68       | pla
 05EE: 67 00    | adc [R+0x00]
 05F1: 87 00    | sta [R+0x00]
 05F3: 02       | nxt
 
-// Pop loop variables and exit loop and end
+// Pop loop variables and exit loop to address in next word
 05F4: 00
 _ascii_leave:  | "(leave)"
 05F5: 28 6C 65 61 76 65 29 00 00 DE 05
-0600: 6B       | pla         // Pop twice
+0600: 6B       | pla          // Pop twice
 0601: 6B       | pla
-0602: 42       | nxa         // Next word
+0602: 42       | nxa          // Next word
 0603: A8       | tay
-0604: B6 00    | ldx (Y+0x00)// Jump to call list at address of next word
+0604: B6 00    | ldx (Y+0x00) // Jump to call list at address of next word
 0606: 5C       | txi
 0607: 8A       | txa
-0608: 02       | nxt         // Continue
+0608: 02       | nxt          // Continue
 
-// Cleanup loop variables
+// Cleanup loop variables if loop ends
 0609: 00 
 _ascii_UNLOOP: | "UNLOOP"
 060A: 55 4E 4C 4F 4F 50 00 00 00 06
@@ -664,6 +690,7 @@ _func_2slash:
 0858: 00
 _ascii_Ugtgt:  | "U>>"
 0859: 55 3E 3E 00 00 51 08
+_func_Ugtgt:
 0860: 7A       | ply      // S[0] = Count
 0861: 68       | pla      // S[1] = Value
 0862: 18       | clc
@@ -677,6 +704,7 @@ _ascii_Ugtgt:  | "U>>"
 0869: 00
 _ascii_ltlt:   | "<<"
 086A: 3C 3C 00 00 60 08
+_func_ltlt:
 0870: 7A       | ply
 0871: 68       | pla
 0872: C0 00 00 | cpy 
@@ -1913,6 +1941,7 @@ _func_STATE:
 _var_STATE:
 1101: 00 00    |             // STATE value
 
+// Computes the amount of free memory
 1103: 00
 _ascii_PROBE:  | "PROBE"
 1104: 50 52 4F 42 45 00 00 FE 10
@@ -1950,6 +1979,7 @@ _func_PROBE:
 1148: 12 11    | 0x1112             //     0x1112
 114A: 5C 05    | _func_EXIT         // EXIT
 
+// Pushes the amount of free memory available
 114C: 00
 _ascii_FREE:   | "FREE"
 114D: 46 52 45 45 00 00 0D 11
@@ -2178,16 +2208,18 @@ _ascii_IMMEDIATE: | "IMMEDIATE"
 1328: 64 07    | _func_Cexclamation // C!
 132A: 5C 05    | _func_EXIT         // EXIT
 
+// Sets the address of the next word's ENT instruction to the return address
 132C: 00
 _ascii_lpdoesrp: | "(does)"
 132D: 28 64 6F 65 73 29 00 00 11 13
-1337: 22 2F 07 | ent _func_Rgt     // R>
-133A: C2 10    | _func_VOCAB       // VOCAB
-133C: 73 07    | _func_at          // @
-133E: D1 08    | _func_oneplus     // 1+
-1340: 38 07    | _func_exclamation // !
+1337: 22 2F 07 | ent _func_Rgt     // R>    // r
+133A: C2 10    | _func_VOCAB       // VOCAB // r VOCAB
+133C: 73 07    | _func_at          // @     // r [VOCAB]
+133E: D1 08    | _func_oneplus     // 1+    // r [VOCAB]+1
+1340: 38 07    | _func_exclamation // !     //
 1342: 5C 05    | _func_EXIT        // EXIT
 
+// Appends the address after it to the next word
 1344: 00
 _ascii_DOESgt: | "DOES>"
 1345: 44 4F 45 53 3E 00 01 37 13
@@ -2202,6 +2234,7 @@ _ascii_DOESgt: | "DOES>"
 135F: 9F 11    | _func_comma    // ,
 1361: 5C 05    | _func_EXIT     // EXIT
 
+// Begins compiling a word named the next word in the terminal buffer
 1363: 00
 _ascii_colon:  | ":"
 1364: 3A 00 00 4E 13
@@ -2213,6 +2246,7 @@ _ascii_colon:  | ":"
 1374: 9D 12    | _func_lb
 1376: 5C 05    | _func_EXIT
 
+// Ends compiling a word
 1378: 00
 _ascii_semicolon: | ";"
 1379: 3B 00 01 69 13
@@ -2226,6 +2260,7 @@ _ascii_semicolon: | ";"
 138B: 00
 _ascii_IF:     | "IF"
 138C: 49 46 00 01 7E 13
+_func_IF:
 1392: 22 50 05 | ent _func_lit
 1395: 7D 05    | _func_qbranch
 1397: 9F 11    | _func_comma
@@ -2240,56 +2275,356 @@ _ascii_IF:     | "IF"
 13A7: 00
 _ascii_THEN:   | "THEN"
 13A8: 54 48 45 4E 00 01 92 13
+_func_THEN:
 13B0: 22 75 06 | ent _func_DROP    // DROP
 13B3: E0 10    | _func_HERE        // HERE
 13B5: 8D 06    | _func_SWAP        // SWAP
 13B7: 38 07    | _func_exclamation // !
 13B9: 5C 05    | _func_EXIT        // EXIT
 
-13BB: 00 45 4C 53 45
-13C0: 00 01 B0 13 22 75 06 50 05 6B 05 9F 11 E0 10 50
-13D0: 05 00 00 9F 11 8D 06 E0 10 8D 06 38 07 50 05 00
-13E0: 00 5C 05 00 2E 22 00 01 C4 13 22 50 05 E2 0F 9F
-13F0: 11 50 05 22 00 08 12 C1 11 5C 05 00 42 45 47 49
-1400: 4E 00 01 EA 13 22 E0 10 50 05 00 00 5C 05 00 41
-1410: 47 41 49 4E 00 01 05 14 22 75 06 50 05 6B 05 9F
-1420: 11 9F 11 5C 05 00 55 4E 54 49 4C 00 01 18 14 22
-1430: 75 06 50 05 7D 05 9F 11 9F 11 5C 05 00 57 48 49
-1440: 4C 45 00 01 2F 14 22 50 05 7D 05 9F 11 E0 10 50
-1450: 05 00 00 9F 11 50 05 00 00 5C 05 00 52 45 50 45
-1460: 41 54 00 01 46 14 22 75 06 0B 07 8D 06 50 05 6B
-1470: 05 9F 11 9F 11 E0 10 8D 06 38 07 5C 05 00 44 4F
-1480: 00 01 66 14 22 50 05 8D 05 9F 11 E0 10 50 05 00
-1490: 00 9F 11 E0 10 8D 06 5C 05 00 3F 44 4F 00 01 84
-14A0: 14 22 50 05 A2 05 9F 11 E0 10 50 05 00 00 9F 11
-14B0: E0 10 8D 06 5C 05 00 4C 4F 4F 50 00 01 A1 14 22
-14C0: 8D 06 50 05 BF 05 9F 11 9F 11 50 05 14 06 9F 11
-14D0: E0 10 8D 06 38 07 5C 05 00 2B 4C 4F 4F 50 00 01
-14E0: BF 14 22 8D 06 50 05 DE 05 9F 11 9F 11 50 05 14
-14F0: 06 9F 11 E0 10 8D 06 38 07 5C 05 00 4C 45 41 56
-1500: 45 00 01 E2 14 22 50 05 01 00 49 06 9B 06 13 09
-1510: 7D 05 1E 15 50 05 02 00 8F 07 6B 05 0A 15 50 05
-1520: 00 06 9F 11 9B 06 50 05 02 00 9C 07 9F 11 5C 05
-1530: 00 5C 00 01 05 15 22 50 05 0D 00 08 12 75 06 5C
-1540: 05 00 28 00 01 36 15 22 50 05 29 00 08 12 75 06
-1550: 5C 05 00 28 22 29 00 00 47 15 22 2F 07 49 06 49
-1560: 06 7F 07 7D 05 6D 15 D1 08 6B 05 5F 15 D1 08 25
-1570: 07 5C 05 00 22 00 01 5A 15 22 50 05 5A 15 9F 11
-1580: 50 05 22 00 08 12 C1 11 5C 05 00 54 49 4D 45 53
-1590: 00 01 79 15 22 FE 10 73 07 13 09 7D 05 BB 15 F1
-15A0: 18 8D 06 50 05 00 00 A2 05 B5 15 49 06 3D 06 BF
-15B0: 05 AB 15 14 06 75 06 6B 05 F1 15 F1 18 50 05 50
-15C0: 05 9F 11 50 05 00 00 9F 11 50 05 A2 05 9F 11 E0
-15D0: 10 50 05 0A 00 8F 07 9F 11 9F 11 E0 10 50 05 02
-15E0: 00 9C 07 50 05 BF 05 9F 11 9F 11 50 05 14 06 9F
-15F0: 11 5C 05 00 4C 49 54 45 52 41 4C 00 01 94 15 22
-1600: F1 18 50 05 50 05 9F 11 9F 11 5C 05 00 50 4F 53
-1610: 54 50 4F 4E 45 00 01 FF 15 22 F1 18 49 06 50 05
-1620: 03 00 9C 07 7F 07 50 05 01 00 86 08 7D 05 36 16
-1630: 9F 11 6B 05 3E 16 50 05 50 05 9F 11 9F 11 5C 05
-1640: 00 52 45 43 55 52 53 45 00 01 19 16 22 C2 10 73
-1650: 07 9F 11 5C 05 00 54 49 43 4B 53 00 00 4C 16 22
-1660: 56 06 7D 05 6E 16 A5 0D DC 08 6B 05 60 16 5C 05
+13BB: 00
+_ascii_ELSE:   | "ELSE"
+13BC: 45 4C 53 45 00 01 B0 13
+_func_ELSE:
+13C4: 22 75 06 | ent _func_DROP    // DROP
+13C7: 50 05    | _func_lit         // (lit)
+13C9: 6B 05    | _func_branch      //     (branch)
+13CB: 9F 11    | _func_comma       // ,
+13CB: E0 10    | _func_HERE        // HERE
+13CF: 50 05    | _func_lit         // (lit)
+13D1: 00 00    | 0x0000            //     0x0000
+13D3: 9F 11    | _func_comma       // ,
+13D5: 8D 06    | _func_SWAP        // SWAP
+13D7: E0 10    | _func_HERE        // HERE
+13D9: 8D 06    | _func_SWAP        // SWAP
+13DB: 38 07    | _func_exclamation // !
+13DD: 50 05    | _func_lit         // (lit)
+13DF: 00 00    | 0x0000            //     0x0000
+13E1: 5C 05    | _func_EXIT        // EXIT
+
+13E3: 00
+_ascii_dotquote: | ".\""
+13F4: 2E 22 00 01 C4 13
+_func_dotquote:
+14FA: 22 50 05 | _func_lit          // (lit)
+13FD: E2 0F    | _func_lpdotquoterp //     (.")
+13FF: 9F 11    | _func_comma        // ,
+13F1: 50 05    | _func_lit          // (lit)
+13F3: 22 00    | 0x0022             //     0x0022
+13F5: 08 12    | _func_TIBSPLIT     // TIBSPLIT
+13F7: C1 11    | _func_commaS       // ,S
+13F9: 5C 05    | _func_EXIT         // EXIT
+
+13FB: 00
+_ascii_BEGIN:
+13FC: 42 45 47 49 4E 00 01 EA 13
+_func_BEGIN:
+1405: 22 E0 10 | ent _func_HERE
+1408: 50 05    | _func_lit
+140A: 00 00    | 0x0000
+140C: 5C 05    | _func_EXIT
+
+140E: 00
+_ascii_AGAIN:  | "AGAIN"
+140F: 41 47 41 49 4E 00 01 05 14
+_func_AGAIN:
+1418: 22 75 06 | ent _func_DROP
+141B: 50 05    | _func_lit
+141D: 6B 05    | _func_branch
+141F: 9F 11    | _func_comma
+1421: 9F 11    | _func_comma
+1423: 5C 05    | _func_EXIT
+
+1425: 00
+_ascii_UNTIL:  | "UNTIL"
+1426: 55 4E 54 49 4C 00 01 18 14
+_func_UNTIL:
+142F: 22 75 06 | ent _func_DROP
+1432: 50 05    | _func_lit
+1434: 7D 05    | _func_qbranch
+1436: 9F 11    | _func_comma
+1438: 9F 11    | _func_comma
+143A: 5C 05    | _func_EXIT
+
+143C: 00
+_ascii_WHILE:  | "WHILE"
+143D: 57 48 49 4C 45 00 01 2F 14
+_func_WHILE:
+1446: 22 50 05 | ent _func_lit
+1449: 7D 05    | _func_qbranch
+144B: 9F 11    | _func_comma
+144D: E0 10    | _func_HERE
+144F: 50 05    | _func_lit
+1451: 00 00    | 0x0000
+1453: 9F 11    | _func_comma
+1455: 50 05    | _func_lit
+1457: 00 00    | 0x0000
+1459: 5C 05    | _func_EXIT
+
+145B: 00
+_ascii_REPEAT: | "REPEAT"
+145C: 52 45 50 45 41 54 00 01 46 14
+_func_REPEAT:
+1466: 22 75 06 | ent _func_DROP
+1469: 0B 07    | _func_NIP
+146B: 8D 06    | _func_SWAP
+146D: 50 05    | _func_lit
+146F: 6B 05    | _func_branch
+1471: 9F 11    | _func_comma
+1473: 9F 11    | _func_comma
+1475: E0 10    | _func_HERE
+1477: 8D 06    | _func_SWAP
+1479: 38 07    | _func_exclamation
+147B: 5C 05    | _func_EXIT
+
+147D: 00
+_ascii_DO:     | "DO"
+147E: 44 4F 00 01 66 14
+_func_DO:
+1484: 22 50 05 | ent _func_lit
+1487: 8D 05    | _func_
+1489: 9F 11
+148B: E0 10
+148D: 50 05
+148F: 00 00
+1491: 9F 11
+1493: E0 10
+1495: 8D 06
+1497: 5C 05
+
+1499: 00
+_ascii_qDO:    | "?DO"
+149A: 3F 44 4F 00 01 84 14
+_func_qDO:
+14A1: 22 50 05
+14A4: A2 05
+14A6: 9F 11
+14A8: E0 10
+14AA: 50 05
+14AC: 00 00
+14AE: 9F 11
+14B0: E0 10
+14B2: 8D 06
+14B4: 5C 05
+
+14B6: 00
+_ascii_LOOP:   | "LOOP"
+14B7: 4C 4F 4F 50 00 01 A1 14
+_func_LOOP:
+14BF: 22 8D 06
+14C2: 50 05
+14C4: BF 05
+14C6: 9F 11
+14C8: 9F 11
+14CA: 50 05
+14CC: 14 06
+14CE: 9F 11
+14D0: E0 10
+14D2: 8D 06
+14D4: 38 07
+14D6: 5C 05
+
+14D8: 00
+_ascii_pLOOP:  | "+LOOP"
+14D9: 2B 4C 4F 4F 50 00 01 BF 14
+_func_qLOOP:
+14E2: 22 8D 06
+14E5: 50 05
+14E7: DE 05
+14E9: 9F 11
+14EB: 9F 11
+14ED: 50 05
+14EF: 14 06
+14F1: 9F 11
+14F3: E0 10
+14F5: 8D 06
+14F7: 38 07
+14F9: 5C 05
+
+14FB: 00
+_ascii_LEAVE:  | "LEAVE"
+14FC: 4C 45 41 56 45 00 01 E2 14
+_func_LEAVE:
+1505: 22 50 05
+1508: 01 00
+150A: 49 06
+150C: 9B 06
+150E: 13 09
+1510: 7D 05
+1512: 1E 15
+1514: 50 05
+1516: 02 00
+1518: 8F 07
+151A: 6B 05
+151C: 0A 15
+151E: 50 05
+1520: 00 06
+1522: 9F 11
+1524: 9B 06
+1526: 50 05
+1528: 02 00
+152A: 9C 07
+152C: 9F 11
+152E: 5C 05
+
+1530: 00
+_ascii_backslash: | "\"
+1531: 5C 00 01 05 15
+_func_backslash:
+1536: 22 50 05 | ent _func_lit // (lit)
+1539: 0D 00    | 0x000D        //     '\r'
+153B: 08 12    | TIBSPLIT      // TIBSPLIT
+153D: 75 06    | _func_DROP    // DROP
+153F: 5C 05    | _func_EXIT    // EXIT
+
+1541: 00
+_ascii_lp:  | "("
+1542: 28 00 01 36 15
+_func_lp:
+1547: 22 50 05 | ent _func_lit // (lit)
+154A: 29 00    | 0x0029        //     ')'
+154C: 08 12    | TIBSPLIT      // TIBSPLIT
+154E: 75 06    | _func_DROP    // DROP
+1550: 5C 05    | _func_EXIT    // EXIT
+
+1552: 00
+_ascii_lpquoterp: | "(\")"
+1553: 28 22 29 00 00 47 15
+_func_lpquoterp:
+155A: 22 2F 07 | ent _func_Rgt // R>         // r
+155D: 49 06    | _func_DUP     // DUP        // r r
+155F: 49 06    | _func_DUP     // DUP        // r r *r
+1561: 7F 07    | _func_Cat     // C@         // r r C[*r]
+1563: 7D 05    | _func_qbranch // (?branch)  // r r
+1565: 6D 15    | 0x156D        //     0x156D //
+1567: D1 08    | _func_oneplus // 1+         // r r+1
+1569: 6B 05    | _func_branch  // (branch)   //
+156B: 5F 15    | 0x155F        //     0x155F //
+156D: D1 08    | _func_oneplus // 1+         // r r+1
+156F: 25 07    | _func_gtR     // >R         // r
+1571: 5C 05    | _func_EXIT    // EXIT
+
+1573: 00
+_ascii_quote:  | "\""
+1574: 22 00 01 5A 15
+_func_quote:
+1579: 22 50 05 | ent _func_lit   // (lit)
+157C: 5A 15    | _func_lpquoterp //     (")
+157E: 9F 11    | _func_comma     // ,
+1580: 50 05    | _func_lit       // (lit)
+1582: 22 00    | 0x0022          //     '\"'
+1584: 08 12    | _func_TIBSPLIT  // TIBSPLIT
+1586: C1 11    | _func_commaS    // ,S
+1588: 5C 05    | _func_EXIT      // EXIT
+
+158A: 00
+_ascii_TIMES:  | "TIMES"
+158B: 54 49 4D 45 53 00 01 79 15
+_func_TIMES:
+1594: 22 FE 10 | ent _func_STATE  // STATE
+1597: 73 07    | _func_at         // @
+1599: 13 09    | _func_zeroeq     // 0=
+159B: 7D 05    | _func_qbranch    // (?branch)  // If not interpreting, jump
+159D: BB 15    | 0x15BB           //     0x15BB
+159F: F1 18    | _func_apostrophe // '
+15A1: 8D 06    | _func_SWAP       // SWAP
+15A3: 50 05    | _func_lit        // (lit)
+15A5: 00 00    | 0x0000           //     0x0000
+15A7: A2 05    | _func_qdo        // (?do)
+15A9: B5 15    | 0x15B5           //     0x15B5
+15AB: 49 06    | _func_DUP        // DUP
+15AD: 3D 06    | _func_EXECUTE    // EXECUTE
+15AF: BF 05    | _func_loop       // (loop)
+15B1: AB 15    | 0x15AB           //     0x15AB
+15B3: 14 06    | _func_UNLOOP     // UNLOOP
+15B5: 75 06    | _func_DROP       // DROP
+15B7: 6B 05    | _func_branch     // (branch)
+15B9: F1 15    | 0x15F1           //     0x15F1
+15BB: F1 18    | _func_apostrophe // '
+15BD: 50 05    | _func_lit        // (lit)
+15BF: 50 05    | _func_lit        //     (lit)
+15C1: 9F 11    | _func_comma      // ,
+15C3: 50 05    | _func_lit        // (lit)
+15C5: 00 00    | 0x0000           //     0x0000
+15C7: 9F 11    | _func_comma      // ,
+15C9: 50 05    | _func_lit        // (lit)
+15CB: A2 05    | _func_qdo        //     (?do)
+15CD: 9F 11    | _func_comma      // ,
+15CF: E0 10    | _func_HERE       // HERE
+15D1: 50 05    | _func_lit        // (lit)
+15D3: 0A 00    | 0x000A           //     0x000A
+15D5: 8F 07    | _func_plus       // +
+15D7: 9F 11    | _func_comma      // ,
+15D9: 9F 11    | _func_comma      // ,
+15DB: E0 10    | _func_HERE       // HERE
+15DD: 50 05    | _func_lit        // (lit)
+15DF: 02 00    | 0x0002           //     0x0002
+15E1: 9C 07    | _func_minus      // -
+15E3: 50 05    | _func_lit        // (lit)
+15E5: BF 05    | _func_loop       //     (loop)
+15E7: 9F 11    | _func_comma      // ,
+15E9: 9F 11    | _func_comma      // ,
+15EB: 50 05    | _func_lit        // (lit)
+15ED: 14 06    | _func_UNLOOP     //     UNLOOP
+15EF: 9F 11    | _func_comma      // ,
+15F1: 5C 05    | _func_EXIT       // EXIT
+
+15F3: 00
+_ascii_LITERAL: | "LITERAL"
+15F4: 4C 49 54 45 52 41 4C 00 01 94 15
+_func_LITERAL:
+15FF: 22 F1 18 | ent _func_apostrophe // '
+1602: 50 05    | _func_lit            // (lit)
+1604: 50 05    | _func_lit            //     (lit)
+1606: 9F 11    | _func_comma          // ,
+1608: 9F 11    | _func_comma          // ,
+160A: 5C 05    | _func_EXIT           // EXIT
+
+160C: 00
+_ascii_POSTPONE: | "POSTPONE"
+160D: 50 4F 53 54 50 4F 4E 45 00 01 FF 15
+_func_POSTPONE:
+1619: 22 F1 18 | ent _func_apostrophe // '          // a
+161C: 49 06    | _func_DUP            // DUP        // a a
+161E: 50 05    | _func_lit            // (lit)
+1620: 03 00    | 0x0003               //     0x0003
+1622: 9C 07    | _func_minus          // -          // a a-3
+1624: 7F 07    | _func_Cat            // C@         // a C[a-3]
+1626: 50 05    | _func_lit            // (lit)
+1628: 01 00    | 0x0001               //     0x0001
+162A: 86 08    | _func_AND            // AND        // a C[a-3]&1
+162C: 7D 05    | _func_qbranch        // (?branch)
+162E: 36 16    | 0x1636               //     0x1636
+1630: 9F 11    | _func_comma          // ,          // Append direct call if immediate
+1632: 6B 05    | _func_branch         // (branch)
+1634: 3E 16    | 0x163E               //     0x163E
+1636: 50 05    | _func_lit            // (lit)      // a (lit)
+1638: 50 05    | _func_lit            //     (lit)
+163A: 9F 11    | _func_comma          // ,          // a
+163C: 9F 11    | _func_comma          // ,          // Append (lit) w/ address if not immediate
+163E: 5C 05    | _func_EXIT           // EXIT
+
+1640: 00
+_ascii_RECURSE: | "RECURSE"
+1641: 52 45 43 55 52 53 45 00 01 19 16
+_func_RECURSE:
+164C: 22 C2 10 | ent _func_VOCAB
+164F: 73 07    | _func_at
+1651: 9F 11    | _func_comma
+1653: 5C 05    | _func_EXIT
+
+1655: 00
+_ascii_TICKS:  | "TICKS"
+1656: 54 49 43 4B 53 00 00 4C 16
+_func_TICKS:
+165F: 22 56 06 | ent _func_qDUP
+1662: 7D 05    | _func_qbranch
+1664: 6E 16    | 0x166E
+1666: A5 0D    | TICK
+1668: DC 08    | _func_oneminus
+166A: 6B 05    | _func_branch
+166C: 60 16    | 0x1660
+166E: 5C 05    | _func_EXIT
 
 1670: 00
 _ascii_SP0:    | "SP0"
@@ -2775,7 +3110,7 @@ _func_DISKID:
 1A6A: 00
 _ascii_DISKWS:
 1A6B: 44 49 53 4B 57 53 00 00 31 1A
-                                                    // d s
+_func_DISKWS:                                       // d s
 1A75: 22 D8 19 | ent _func_DISKADDR   // DISKADDR   // d s DISKADDR
 1A78: 73 07    | ent _func_at         // @          // d s [DISKADDR]
 1A7A: B0 0D    | _func_RBPexclamation // RBP!       // d s
@@ -2808,64 +3143,326 @@ _ascii_DISKWS:
 1AAE: 00
 _ascii_DISKRS
 AEEF: 44 49 53 4B 52 53 00 00 75 1A
-1AB9: 22 D8 19
-1ABC: 73 07
-1ABE: B0 0D
-1AC0: 50 05
-1AC2: 80 03
-1AC4: 38 07
-1AC6: 50 05
-1AC8: 04 00
-1ACA: 50 05
-1ACC: 82 03
-1ACE: 64 07
-1AD0: 50 05
-1AD2: 82 03
-1AD4: 7F 07
-1AD6: 50 05
-1AD8: 04 00
-1ADA: E5 09
-1ADC: 7D 05
-1ADE: E6 1A
-1AE0: A5 0D 6B 05 D0 1A 50 05 00 03 8D 06 50 05 80 00
-1AF0: 39 0A 5C 05 00 53 41 56 45 22 00 00 B9 1A 22 EB
-1B00: 19 50 05 00 05 E0 10 50 05 81 04 9C 07 50 05 07
-1B10: 00 60 08 50 05 00 00 8D 05 2D 1B 49 06 1D 06 75
-1B20: 1A 50 05 80 00 8F 07 BF 05 1B 1B 14 06 5C 05 00
-1B30: 28 62 6C 6B 62 75 66 29 00 00 FE 1A 22 34 05 00
-1B40: 00 00 28 62 6C 6B 6E 6F 29 00 00 3C 1B 22 34 05
-1B50: 00 00 00 28 62 6C 6B 75 70 29 00 00 4D 1B 22 34
-1B60: 05 00 00 00 46 4C 55 53 48 00 00 5E 1B 22 3C 1B
-1B70: 73 07 4D 1B 73 07 DC 08 50 05 03 00 70 08 50 05
-1B80: 08 00 50 05 00 00 8D 05 A0 1B 65 06 75 1A 8D 06
-1B90: 50 05 80 00 8F 07 8D 06 D1 08 BF 05 8A 1B 14 06
-1BA0: 81 06 50 05 00 00 5E 1B 38 07 5C 05 00 52 45 56
-1BB0: 45 52 54 00 00 6D 1B 22 50 05 00 00 5E 1B 38 07
-1BC0: 3C 1B 73 07 4D 1B 73 07 DC 08 50 05 03 00 70 08
-1BD0: 50 05 08 00 50 05 00 00 8D 05 F2 1B 65 06 B9 1A
-1BE0: 8D 06 50 05 80 00 8F 07 8D 06 D1 08 BF 05 DC 1B
-1BF0: 14 06 81 06 5C 05 00 42 4C 4F 43 4B 00 00 B7 1B
-1C00: 22 3C 1B 73 07 13 09 7D 05 15 1C 50 05 00 04 6A
-1C10: 11 3C 1B 38 07 49 06 4D 1B 73 07 E5 09 7D 05 29
-1C20: 1C 75 06 3C 1B 73 07 5C 05 4D 1B 73 07 26 09 7D
-1C30: 05 35 1C 6D 1B 4D 1B 38 07 B7 1B 3C 1B 73 07 5C
-1C40: 05 00 55 50 44 41 54 45 00 00 00 1C 22 50 05 01
-1C50: 00 5E 1B 38 07 5C 05 00 4C 49 53 54 00 00 4C 1C
-1C60: 22 00 1C C7 0E 50 05 0A 00 2B 0B 38 07 50 05 10
-1C70: 00 50 05 00 00 8D 05 AD 1C 1D 06 50 05 0A 00 5D
-1C80: 09 7D 05 87 1C 07 10 1D 06 34 10 50 05 40 00 50
-1C90: 05 00 00 8D 05 A5 1C 49 06 7F 07 07 0F D1 08 BF
-1CA0: 05 97 1C 14 06 C7 0E BF 05 79 1C 14 06 75 06 5C
-1CB0: 05 00 57 49 50 45 00 00 60 1C 22 4C 1C 3C 1B 73
-1CC0: 07 50 05 00 04 50 05 20 00 58 0A 5C 05 00 50 50
-1CD0: 00 00 BA 1C 22 4C 1C 50 05 06 00 70 08 3C 1B 73
-1CE0: 07 8F 07 49 06 50 05 40 00 50 05 20 00 58 0A 50
-1CF0: 05 0D 00 08 12 18 07 A9 0A 50 05 40 00 28 0A 39
-1D00: 0A 5C 05 00 4C 4F 41 44 00 00 D4 1C 22 00 1C 50
-1D10: 05 00 00 1C 0B 50 05 40 00 8F 07 64 07 50 05 10
-1D20: 00 50 05 00 00 8D 05 49 1D 49 06 1C 0B 50 05 40
-1D30: 00 39 0A 1C 0B B3 10 38 07 1C 0B 8D 17 50 05 40
-1D40: 00 8F 07 BF 05 29 1D 14 06 75 06 5C 05
+_func_DISKRS:
+1AB9: 22 D8 19 | ent _func_DISKADDR   // DISKADDR
+1ABC: 73 07    | _func_at             // @
+1ABE: B0 0D    | _func_RBPexclamation // RBP!
+1AC0: 50 05    | _func_lit            // (lit)
+1AC2: 80 03    | 0x0380               //     0x0380
+1AC4: 38 07    | _func_exclamation    // !
+1AC6: 50 05    | _func_lit            // (lit)
+1AC8: 04 00    | 0x0004               //     0x0004
+1ACA: 50 05    | _func_lit            // (lit)
+1ACC: 82 03    | 0x0382               //     0x0382
+1ACE: 64 07    | _func_Cexclamation   // C!
+1AD0: 50 05    | _func_lit            // (lit)
+1AD2: 82 03    | 0x0382               //     0x0382
+1AD4: 7F 07    | _func_Cat            // C@
+1AD6: 50 05    | _func_lit            // (lit)
+1AD8: 04 00    | 0x0004               //     0x0004
+1ADA: E5 09    | _func_equals         // =
+1ADC: 7D 05    | _func_qbranch        // (?branch)
+1ADE: E6 1A    | 0x1AE6               //     0x1AE6
+1AE0: A5 0D    | _func_TICK           // TICK
+1AE2: 6B 05    | _func_branch         // (branch)
+1AE4: D0 1A    | 0x1AD0               //     0x1AD0
+1AE6: 50 05    | _func_lit            // (lit)
+1AE8: 00 03    | 0x0300               //     0x0300
+1AEA: 8D 06    | _func_SWAP           // SWAP
+1AEC: 50 05    | _func_lit            // (lit)
+1AEE: 80 00    | 0x0080               //     0x0080
+1AF0: 39 0A    | _func_MOVE           // MOVE
+1AF2: 5C 05    | _func_EXIT           // EXIT
+
+1AF4: 00
+_ascii_SAVE:   | "SAVE\""
+1AF5: 53 41 56 45 22 00 00 B9 1A
+_func_SAVE:
+1AFE: 22 EB 19 | ent _func_DISKNAME // DISKNAME"
+1B01: 50 05    | _func_lit          // (lit)
+1B03: 00 05    | 0x0500             //     0x0500
+1B05: E0 10    | _func_HERE         // HERE
+1B07: 50 05    | _func_lit          // (lit)
+1B09: 81 04    | 0x0481             //     0x0481
+1B0B: 9C 07    | _func_minus        // -
+1B0D: 50 05    | _func_lit          // (lit)
+1B0F: 07 00    | 0x0007             //     0x0007
+1B11: 60 08    | _func_Ugtgt        // U>>
+1B13: 50 05    | _func_lit          // (lit)
+1B15: 00 00    | 0x0000             //     0x0000
+1B17: 8D 05    | _func_do           // (do)
+1B19: 2D 1B    | 0x1B2D             //     0x1B2D
+1B1B: 49 06    | _func_DUP          // DUP
+1B1D: 1D 06    | _func_I            // I
+1B1F: 75 1A    | _func_DISKWS       // DISKWS
+1B21: 50 05    | _func_lit          // (lit)
+1B23: 80 00    | 0x0080             //     0x0080
+1B25: 8F 07    | _func_plus         // +
+1B27: BF 05    | _func_loop         // (loop)
+1B29: 1B 1B    | 0x1B1B             //     0x1B1B
+1B2B: 14 06    | _func_UNLOOP       // UNLOOP
+1B2D: 5C 05    | _func_EXIT         // EXIT
+
+1B2F: 00
+_ascii_blkbuf: | "(blkbuf)"
+1B30: 28 62 6C 6B 62 75 66 29 00 00 FE 1A
+_func_blkbuf:
+1B3C: 22 34 05 | ent _func_DOVAR
+_var_blkbuf:
+1B3F: 00 00
+
+1B41: 00
+_ascii_blkno:  | "blkno"
+1B42: 28 62 6C 6B 6E 6F 29 00 00 3C 1B
+_func_blkno:
+1B4D: 22 34 05 | ent _func_DOVAR
+_var_blkno:
+1B50: 00 00
+
+1B52: 00
+_ascii_blkup:  | "blkup"
+1B53: 28 62 6C 6B 75 70 29 00 00 4D 
+_func_blkup:
+1B5E: 22 34 05 | ent _func_DOVAR
+_var_blkup:
+1B61: 00 00
+
+1B63: 00
+_ascii_FLUSH:  | "FLUSH"
+1B64: 46 4C 55 53 48 00 00 5E 1B
+_func_FLUSH:
+1B6D: 22 3C 1B | ent _func_blkbuf  // (blkbuf)
+1B70: 73 07    | _func_at          // @
+1B72: 4D 1B    | _func_blkno       // (blkno)
+1B74: 73 07    | _func_at          // @
+1B76: DC 08    | _func_oneminus    // 1-
+1B78: 50 05    | _func_lit         // (lit)
+1B7A: 03 00    | 0x0003            //     0x0003
+1B7C: 70 08    | _func_ltlt        // <<
+1B7E: 50 05    | _func_lit         // (lit)
+1B80: 08 00    | 0x0008            //     0x0008
+1B82: 50 05    | _func_lit         // (lit)
+1B84: 00 00    | 0x0000            //     0x0000
+1B86: 8D 05    | _func_do          // (do)
+1B88: A0 1B    | 0x1BA0            //     0x1BA0
+1B8A: 65 06    | _func_2DUP        // 2DUP
+1B8C: 75 1A    | _func_DISKWS      // DISKWS
+1B8E: 8D 06    | _func_SWAP        // SWAP
+1B90: 50 05    | _func_lit         // (lit)
+1B92: 80 00    | 0x0080            //     0x0080
+1B94: 8F 07    | _func_plus        // +
+1B96: 8D 06    | _func_SWAP        // SWAP
+1B98: D1 08    | _func_oneplus     // 1+
+1B9A: BF 05    | _func_loop        // (loop)
+1B9C: 8A 1B    | 0x1B8A            //     0x1B8A
+1B9E: 14 06    | _func_UNLOOP      // UNLOOP
+1BA0: 81 06    | _func_2DROP       // 2DROP
+1BA2: 50 05    | _func_lit         // (lit)
+1BA4: 00 00    | 0x0000            //     0x0000
+1BA6: 5E 1B    | _func_blkup       // (blkup)
+1BA8: 38 07    | _func_exclamation // !
+1BAA: 5C 05    | _func_EXIT        // EXIT
+
+1BAC: 00
+_ascii_REVERT:
+1BAD: 52 45 56 45 52 54 00 00 6D 1B
+_func_REVERT:
+1BB7: 22 50 05 | ent _func_lit     // (lit)
+1BBA: 00 00    | 0x0000            //     0x0000
+1BBC: 5E 1B    | _func_blkup       // (blkup)
+1BBE: 38 07    | _func_exclamation // !
+1BC0: 3C 1B    | _func_blkbuf      // (blkbuf)
+1BC2: 73 07    | _func_at          // @
+1BC4: 4D 1B    | _func_blkno       // (blkno)
+1BC6: 73 07    | _func_at          // @
+1BC8: DC 08    | _func_oneminus    // 1-
+1BCA: 50 05    | _func_lit         // (lit)
+1BCC: 03 00    | 0x0003            //     0x0003
+1BCE: 70 08    | _func_ltlt        // <<
+1BD0: 50 05    | _func_lit         // (lit)
+1BD2: 08 00    | 0x0008            //     0x0008
+1BD4: 50 05    | _func_lit         // (lit)
+1BD6: 00 00    | 0x0000            //     0x0000
+1BD8: 8D 05    | _func_do          // (do)
+1BDA: F2 1B    | 0x1BF2            //     0x1BF2
+1BDC: 65 06    | _func_2DUP        // 2DUP
+1BDE: B9 1A    | _func_DISKRS      // DISKRS
+1BE0: 8D 06    | _func_SWAP        // SWAP
+1BE2: 50 05    | _func_lit         // (lit)
+1BE4: 80 00    | 0x0080            //     0x0080
+1BE6: 8F 07    | _func_plus        // +
+1BE8: 8D 06    | _func_SWAP        // SWAP
+1BEA: D1 08    | _func_oneplus     // 1+
+1BEC: BF 05    | _func_loop        // (loop)
+1BEE: DC 1B    | 0x1BDC            //     0x1BDC
+1BF0: 14 06    | _func_UNLOOP      // UNLOOP
+1BF2: 81 06    | _func_2DROP       // 2DROP
+1BF4: 5C 05    | _func_EXIT        // EXIT
+
+1BF6: 00
+_ascii_BLOCK:  | "BLOCK"
+1BF7: 42 4C 4F 43 4B 00 00 B7 1B
+1C00: 22 3C 1B | ent _func_blkbuf
+1C03: 73 07    | _func_at
+1C05: 13 09    | _func_zeroeq
+1C07: 7D 05    | _func_qbranch
+1C09: 15 1C    | 0x1C15
+1C0B: 50 05    | _func_lit
+1C0D: 00 04    | 0x0400
+1C0F: 6A 11    | _func_ALLOT
+1C11: 3C 1B    | _func_blkbuf
+1C13: 38 07    | _func_exclamation
+1C15: 49 06    | _func_DUP
+1C17: 4D 1B    | _func_blkno
+1C19: 73 07    | _func_at
+1C1B: E5 09    | _func_equals
+1C1D: 7D 05    | _func_qbranch
+1C1F: 29 1C    | 0x1C29
+1C21: 75 06    | _func_DROP
+1C23: 3C 1B    | _func_blkbuf
+1C25: 73 07    | _func_at
+1C27: 5C 05    | _func_EXIT
+1C29: 4D 1B    | _func_blkno
+1C2B: 73 07    | _func_at
+1C2D: 26 09    | _func_zeroltgt
+1C2F: 7D 05    | _func_qbranch
+1C31: 35 1C    | 0x1C35
+1C33: 6D 1B    | _func_FLUSH
+1C35: 4D 1B    | _func_blkno
+1C37: 38 07    | _func_exclamation
+1C39: B7 1B    | _func_REVERT
+1C3B: 3C 1B    | _func_blkbuf
+1C3D: 73 07    | _func_at
+1C3F: 5C 05    | _func_EXIT
+
+1C41: 00
+_ascii_UPDATE: | "UPDATE"
+1C42: 55 50 44 41 54 45 00 00 00 1C
+1C4C: 22 50 05 | ent _func_lit
+1C4F: 01 00    | 0x0001
+1C51: 5E 1B    | _func_blkup
+1C53: 38 07    | _func_exclamation
+1C55: 5C 05    | _func_EXIT
+
+1C57: 00
+_ascii_LIST:   | "LIST"
+1C58: 4C 49 53 54 00 00 4C 1C
+1C60: 22 00 1C | ent _func_BLOCK
+1C63: C7 0E    | _func_CR
+1C65: 50 05    | _func_lit
+1C67: 0A 00    | 0x000A
+1C69: 2B 0B    | _func_RADIX
+1C6B: 38 07    | _func_exclamation
+1C6D: 50 05    | _func_lit
+1C6F: 10 00    | 0x0010
+1C71: 50 05    | _func_lit
+1C73: 00 00    | 0x0000
+1C75: 8D 05    | _func_do
+1C77: AD 1C    | 0x1CAD
+1C79: 1D 06    | _func_I
+1C7B: 50 05    | _func_lit
+1C7D: 0A 00    | 0x000A
+1C7F: 5D 09    | _func_lt
+1C81: 7D 05    | _func_qbranch
+1C83: 87 1C    | 0x1C87
+1C85: 07 10    | _func_SPACE
+1C87: 1D 06    | _func_I
+1C89: 34 10    | _func_dot
+1C8B: 50 05    | _func_lit
+1C8D: 40 00    | 0x0040
+1C8F: 50 05    | _func_lit
+1C91: 00 00    | 0x0000
+1C93: 8D 05    | _func_do
+1C95: A5 1C    | 0x1CA5
+1C97: 49 06    | _func_DUP
+1C99: 7F 07    | _func_Cat
+1C9B: 07 0F    | _func_EMIT
+1C9D: D1 08    | _func_oneplus
+1C9F: BF 05    | _func_loop
+1CA1: 97 1C    | 0x1C97
+1CA3: 14 06    | _func_UNLOOP
+1CA5: C7 0E    | _func_CR
+1CA7: BF 05    | _func_loop
+1CA9: 79 1C    | 0x1C79
+1CAB: 14 06    | _func_UNLOOP
+1CAD: 75 06    | _func_DROP
+1CAF: 5C 05    | _func_EXIT
+
+1CB1: 00
+_ascii_WIPE:   | "WIPE"
+1CB2: 57 49 50 45 00 00 60 1C
+1CBA: 22 4C 1C | ent _func_UPDATE
+1CBD: 3C 1B    | _func_blkbuf
+1CBF: 73 07    | _func_at
+1CC1: 50 05    | _func_lit
+1CC3: 00 04    | 0x0400
+1CC5: 50 05    | _func_lit
+1CC7: 20 00    | 0x0020
+1CC9: 58 0A    | _func_FILL
+1CCB: 5C 05    | _func_EXIT
+
+1CCD: 00
+_ascii_PP:     | "PP"
+1CCE: 50 50 00 00 BA 1C
+1CD4: 22 4C 1C | ent _func_UPDATE
+1CD7: 50 05    | _func_lit
+1CD9: 06 00    | 0x0006
+1CDB: 70 08    | _func_ltlt
+1CDD: 3C 1B    | _func_blkbuf
+1CDF: 73 07    | _func_at
+1CE1: 8F 07    | _func_plus
+1CE3: 49 06    | _func_DUP
+1CE5: 50 05    | _func_lit
+1CE7: 40 00    | 0x0040
+1CE9: 50 05    | _func_lit
+1CEB: 20 00    | 0x0020
+1CED: 58 0A    | _func_FILL
+1CEF: 50 05    | _func_lit
+1CF1: 0D 00    | 0x000D
+1CF3: 08 12    | _func_TIBSPLIT
+1CF5: 18 07    | _func_TUCK
+1CF7: A9 0A    | _func_STRLEN
+1CF9: 50 05    | _func_lit
+1CFB: 40 00    | 0x0040
+1CFD: 28 0A    | _func_MIN
+1CFF: 39 0A    | _func_MOVE
+1D01: 5C 05    | _func_EXIT
+
+1D03: 00
+_ascii_LOAD:   | "LOAD"
+1D04: 4C 4F 41 44 00 00 D4 1C
+1D0C: 22 00 1C | ent _func_BLOCK
+1D0F: 50 05    | _func_lit
+1D11: 00 00    | 0x0000
+1D13: 1C 0B    | _func_TIB
+1D15: 50 05    | _func_lit
+1D17: 40 00    | 0x0040
+1D19: 8F 07    | _func_plus
+1D1B: 64 07    | _func_Cexclamation
+1D1D: 50 05    | _func_lit
+1D1F: 10 00    | 0x0010
+1D21: 50 05    | _func_lit
+1D23: 00 00    | 0x0000
+1D25: 8D 05    | _func_do
+1D27: 49 1D    | 0x1D49
+1D29: 49 06    | _func_DUP
+1D2B: 1C 0B    | _func_TIB
+1D2D: 50 05    | _func_lit
+1D2F: 40 00    | 0x0040
+1D31: 39 0A    | _func_MOVE
+1D33: 1C 0B    | _func_TIB
+1D35: B3 10    | _func_TIBPTR
+1D37: 38 07    | _func_exclamation
+1D39: 1C 0B    | _func_TIB
+1D3B: 8D 17    | _func_INTERPRET
+1D3D: 50 05    | _func_lit
+1D3F: 40 00    | 0x0040
+1D41: 8F 07    | _func_plus
+1D43: BF 05    | _func_loop
+1D45: 29 1D    | 0x1D29
+1D47: 14 06    | _func_UNLOOP
+1D49: 75 06    | _func_DROP
+1D4B: 5C 05    | _func_EXIT
 
 1D4D: 00
 _ascii_COLD:   | "COLD"

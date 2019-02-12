@@ -1,0 +1,209 @@
+.org 0x1866
+
+1D66: 00 
+_ascii_SORTADDR: | "SORTADDR"
+1D67: 53 4F 52 54 41 44 44 52 00 00 1F 1D
+_func_SORTADDR:
+1D73: 22 34 05 | ent _func_DOVAR
+1D76: 04 00
+
+1D78: 00
+_ascii_SORTCMD: | "SORTCMD"
+1D79: 53 4F 52 54 43 4D 44 00 00 73 1D
+_func_SORTCMD:
+1D84: 22 73 1D | ent _func_SORTADDR
+1D87: 73 07    | _func_at
+1D89: B0 0D    | _func_RBPexclamation
+1D8B: 49 06    | _func_DUP
+1DDB: 50 05    | _func_lit
+1DDF: 00 03    | 0x0300
+1D91: 64 07    | _func_Cexclamation
+1D93: 49 06    | _func_DUP
+1D95: 50 05    | _func_lit
+1D97: 00 03    | 0x0300
+1D99: 7F 07    | _func_Cat
+1D9B: E5 09    | _func_equals
+1D9D: 7D 05    | _func_qbranch
+1D9F: A7 1D    | 0x1DA7
+1DA1: A5 0D    | _func_TICK
+1DA3: 6B 05    | _func_branch
+1DA5: 93 1D    | 0x1D93
+1DA7: 75 06    | _func_DROP
+1DA9: 50 05    | _func_lit
+1DAB: 00 03    | 0x0300
+1DAD: 7F 07    | _func_Cat
+1DAF: 50 05    | _func_lit
+1DB1: FF 00    | 0x00FF
+1DB3: E5 09    | _func_equals
+1DB5: 7D 05    | _func_qbranch
+1DB7: CC 1D    | 0x1DCC
+1DB9: E2 0F    | _func_lpdotquoterp
+_str_SorterError: | "Sorter Error\0"
+1DBB: 53 6F 72 74 65 72 20 45 72 72 6F 72 00
+1DC8: C7 0E    | _func_CR
+1DCA: A1 10    | _func_ABORT
+1DCC: 5C 05    | _func_EXIT
+
+1DCE: 00
+_ascii_SORTSLOTS: | "SORTSLOTS"
+1DCF: 53 4F 52 54 53 4C 4F 54 53 00 00 84 1D
+_func_SORTSLOTS:
+1DDC: 22 50 05 | ent _func_lit
+1DDF: 01 00    | 0x0001
+1DE1: 84 1D    | _func_SORTCMD
+1DE3: 50 05    | _func_lit
+1DE5: 02 03    | 0x0302
+1DE7: 73 07    | _func_at
+1DE9: 5C 05    | _func_EXIT
+
+1DEB: 00
+_ascii_SORTSLOT: | "SORTSLOT"
+1DEC: 53 4F 52 54 53 4C 4F 54 40 00 00 DC 1D
+_func_SORTSLOT:
+1DF9: 22 73 1D | ent _func_SORTADDR
+1DFC: 73 07    | _func_at
+1DFE: B0 0D    | _func_RBPexclamation
+1E00: 50 05    | _func_lit
+1E02: 02 03    | 0x0302
+1E04: 38 07    | _func_exclamation
+1E06: 50 05    | _func_lit
+1E08: 02 00    | 0x0002
+1E0A: 84 1D    | _func_SORTCMD
+1E0C: 50 05    | _func_lit
+1E0E: 06 03    | 0x0306
+1E10: 73 07    | _func_at
+1E12: 50 05    | _func_lit
+1E14: 04 03    | 0x0304
+1E16: 73 07    | _func_at
+1E18: 50 05    | _func_lit
+1E1A: 01 03    | 0x0301
+1E1C: 7F 07    | _func_Cat
+1E1E: 5C 05    | _func_EXIT
+
+1E20: 00
+_ascii_SORTPULL: | "SORTPULL"
+1E21: 53 4F 52 54 50 55 4C 4C 00 00 F9 1D
+1E2D: 22 73 1D | _func_SORTADDR
+1E30: 73 07    | _func_at
+1E32: B0 0D    | _func_RBPexclamation
+1E34: 50 05    | _func_lit
+1E36: 02 03    | 0x0302
+1E38: 38 07    | _func_exclamation
+1E3A: 50 05    | _func_lit
+1E3C: 01 03    | 0x0301
+1E3E: 64 07    | _func_Cexclamation
+1E40: 50 05    | _func_lit
+1E42: 03 00    | 0x0003
+1E44: 84 1D    | _func_SORTCMD
+1E46: 50 05    | _func_lit
+1E48: 01 03    | 0x0301
+1E4A: 7F 07    | _func_Cat
+1E4C: 5C 05    | _func_EXIT
+
+1E4E: 00
+_ascii_SORTCOLORat: | "SORTCOLOR@"
+1E4F: 53 4F 52 54 43 4F 4C 4F 52 40 00 00 2D 1E
+1E5D: 22 73 1D | ent _func_SORTADDR
+1E60: 73 07    | _func_at
+1E62: B0 0D    | _func_RBPexclamation
+1E64: 50 05    | _func_lit
+1E66: 0C 03    | 0x030C
+1E68: 7F 07    | _func_Cat
+1E6A: 5C 05    | _func_EXIT
+
+1E6C: 00
+_ascii_SORTCOLORexclamation: | "SORTCOLOR!"
+1E6D: 53 4F 52 54 43 4F 4C 4F 52 21 00 00 5D 1E
+1E7B: 22 73 1D | ent _func_SORTADDR
+1E7E: 73 07    | _func_at
+1E80: B0 0D    | _func_RBPexclamation
+1E82: 50 05    | _func_lit
+1E84: 0C 03    | 0x030C
+1E86: 64 07    | _func_
+1E88: 5C 05    | _func_EXIT
+
+1E8A: 00
+_ascii_SORTPATat: | "SORTPAT@"
+1E8B: 53 4F 52 54 50 41 54 40 00 00 7B 1E
+1E97: 22 73 1D | ent _func_SORTADDR
+1E9A: 73 07    | _func_at
+1E9C: B0 0D    | _func_RBPexclamation
+1E9E: 50 05    | _func_lit
+1EA0: 06 03    | 0x0306
+1EA2: 73 07    | _func_at
+1EA4: 50 05    | _func_lit
+1EA6: 04 03    | 0x0304
+1EA8: 73 07    | _func_at
+1EAA: 5C 05    | _func_EXIT
+
+1EAC: 00
+_ascii_SORTPATexclamation: | "SORTPAT!"
+1EAD: 53 4F 52 54 50 41 54 21 00 00 97 1E
+1EB9: 22 73 1D | ent _func_SORTADDR
+1EBC: 73 07    | _func_at
+1EBE: B0 0D    | _func_RBPexclamation
+1EC0: 50 05    | _func_lit
+1EC2: 04 03    | 0x0304
+1EC4: 38 07    | _func_exclamation
+1EC6: 50 05    | _func_lit
+1EC8: 06 03    | 0x0306
+1ECA: 38 07    | _func_lit
+1ECC: 5C 05    | _func_EXIT
+
+1ECE: 00
+_ascii_SORTINCOLat: | "SORTINCOL@"
+1ECF: 53 4F 52 54 49 4E 43 4F 4C 40 00 00 B9 1E
+1EDD: 22 73 1D | ent _func_SORTADDR
+1EE0: 73 07    | _func_at
+1EE2: B0 0D    | _func_RBPexclamation
+1EE4: 50 05    | _func_lit
+1EE6: 0D 03    | 0x030D
+1EE8: 7F 07    | _func_Cat
+1EEA: 5C 05    | _func_EXIT
+
+1EEC: 00
+_ascii_SORTINCOLexclamation: | "SORTINCOL!"
+1EED: 53 4F 52 54 49 4E 43 4F 4C 21 00 00 DD 1E
+1EFB: 22 73 1D | ent _func_SORTADDR
+1EFE: 73 07    | _func_at
+1F00: B0 0D    | _func_RBPexclamation
+1F02: 50 05    | _func_lit
+1F04: 0D 03    | 0x030D
+1F06: 64 07    | _func_Cexclamation
+1F08: 5C 05    | _func_EXIT
+
+1F0A: 00
+_ascii_SORTDMG: | "SORTDMG"
+1F0B: 53 4F 52 54 44 4D 47 40 00 00 FB 1E
+1F17: 22 73 1D | ent _func_SORTADDR
+1F1A: 73 07    | _func_at
+1F1C: B0 0D    | _func_RBPexclamation
+1F1E: 50 05    | _func_lit
+1F20: 08 03    | 0x0308
+1F22: 73 07    | _func_at
+1F24: 5C 05    | _func_EXIT
+
+1F26: 00
+_ascii_SORTDMGMAX: | "SORTDMGMAX"
+1F27: 53 4F 52 54 44 4D 47 4D 41 58 40 00 00 17 1F
+1F36: 22 73 1D | ent _func_SORTADDR
+1F39: 73 07    | _func_at
+1F3B: B0 0D    | _func_RBPexclamation
+1F3D: 50 05    | _func_lit
+1F3F: 0A 03    | 0x030A
+1F41: 73 07    | _func_at
+1F43: 5C 05    | _func_EXIT
+
+1F45: 00
+_ascii_SORTMATCH: | "SORTMATCH"
+1F46: 53 4F 52 54 4D 41 54 43 48 00 00 36 1F
+1F53: 22 73 1D | _func_SORTADDR
+1F56: 73 07    | _func_at
+1F58: B0 0D    | _func_RBPexclamation
+1F5A: 50 05    | _func_lit
+1F5C: 01 03    | 0x0301
+1F5E: 64 07    | _func_Cexclamation
+1F60: 50 05    | _func_lit
+1F62: 04 00    | 0x0004
+1F64: 84 1D    | _func_SORTCMD
+1F66: 5C 05    | _func_EXIT
