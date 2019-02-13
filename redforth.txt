@@ -3302,47 +3302,49 @@ _func_REVERT:
 1BF6: 00
 _ascii_BLOCK:  | "BLOCK"
 1BF7: 42 4C 4F 43 4B 00 00 B7 1B
-1C00: 22 3C 1B | ent _func_blkbuf
-1C03: 73 07    | _func_at
-1C05: 13 09    | _func_zeroeq
-1C07: 7D 05    | _func_qbranch
-1C09: 15 1C    | 0x1C15
-1C0B: 50 05    | _func_lit
-1C0D: 00 04    | 0x0400
-1C0F: 6A 11    | _func_ALLOT
-1C11: 3C 1B    | _func_blkbuf
-1C13: 38 07    | _func_exclamation
-1C15: 49 06    | _func_DUP
-1C17: 4D 1B    | _func_blkno
-1C19: 73 07    | _func_at
-1C1B: E5 09    | _func_equals
-1C1D: 7D 05    | _func_qbranch
-1C1F: 29 1C    | 0x1C29
-1C21: 75 06    | _func_DROP
-1C23: 3C 1B    | _func_blkbuf
-1C25: 73 07    | _func_at
-1C27: 5C 05    | _func_EXIT
-1C29: 4D 1B    | _func_blkno
-1C2B: 73 07    | _func_at
-1C2D: 26 09    | _func_zeroltgt
-1C2F: 7D 05    | _func_qbranch
-1C31: 35 1C    | 0x1C35
-1C33: 6D 1B    | _func_FLUSH
-1C35: 4D 1B    | _func_blkno
-1C37: 38 07    | _func_exclamation
-1C39: B7 1B    | _func_REVERT
-1C3B: 3C 1B    | _func_blkbuf
-1C3D: 73 07    | _func_at
-1C3F: 5C 05    | _func_EXIT
+1C00: 22 3C 1B | ent _func_blkbuf  // (blkbuf)   // Ensure (blkbuf) is allocated
+1C03: 73 07    | _func_at          // @
+1C05: 13 09    | _func_zeroeq      // 0=
+1C07: 7D 05    | _func_qbranch     // (?branch)
+1C09: 15 1C    | 0x1C15            //     0x1C15
+1C0B: 50 05    | _func_lit         // (lit)
+1C0D: 00 04    | 0x0400            //     0x0400 // 1KiB
+1C0F: 6A 11    | _func_ALLOT       // ALLOT
+1C11: 3C 1B    | _func_blkbuf      // (blkbuf)
+1C13: 38 07    | _func_exclamation // !
+
+1C15: 49 06    | _func_DUP         // DUP
+1C17: 4D 1B    | _func_blkno       // (blkno)
+1C19: 73 07    | _func_at          // @
+1C1B: E5 09    | _func_equals      // =
+1C1D: 7D 05    | _func_qbranch     // (?branch)
+1C1F: 29 1C    | 0x1C29            //     0x1C29
+1C21: 75 06    | _func_DROP        // DROP       // Do nothing if block numbers are the same
+1C23: 3C 1B    | _func_blkbuf      // (blkbuf)
+1C25: 73 07    | _func_at          // @
+1C27: 5C 05    | _func_EXIT        // EXIT
+
+1C29: 4D 1B    | _func_blkno       // (blkno)
+1C2B: 73 07    | _func_at          // @
+1C2D: 26 09    | _func_zeroltgt    // 0<>
+1C2F: 7D 05    | _func_qbranch     // (?branch)
+1C31: 35 1C    | 0x1C35            //     0x1C35
+1C33: 6D 1B    | _func_FLUSH       // FLUSH
+1C35: 4D 1B    | _func_blkno       // (blkno)
+1C37: 38 07    | _func_exclamation // !
+1C39: B7 1B    | _func_REVERT      // REVERT
+1C3B: 3C 1B    | _func_blkbuf      // (blkbuf)
+1C3D: 73 07    | _func_at          // @
+1C3F: 5C 05    | _func_EXIT        // EXIT
 
 1C41: 00
 _ascii_UPDATE: | "UPDATE"
 1C42: 55 50 44 41 54 45 00 00 00 1C
-1C4C: 22 50 05 | ent _func_lit
-1C4F: 01 00    | 0x0001
-1C51: 5E 1B    | _func_blkup
-1C53: 38 07    | _func_exclamation
-1C55: 5C 05    | _func_EXIT
+1C4C: 22 50 05 | ent _func_lit     // (lit)
+1C4F: 01 00    | 0x0001            //     0x0001
+1C51: 5E 1B    | _func_blkup       // (blkup)
+1C53: 38 07    | _func_exclamation // !
+1C55: 5C 05    | _func_EXIT        // EXIT
 
 1C57: 00
 _ascii_LIST:   | "LIST"
@@ -3391,78 +3393,78 @@ _ascii_LIST:   | "LIST"
 1CB1: 00
 _ascii_WIPE:   | "WIPE"
 1CB2: 57 49 50 45 00 00 60 1C
-1CBA: 22 4C 1C | ent _func_UPDATE
-1CBD: 3C 1B    | _func_blkbuf
-1CBF: 73 07    | _func_at
-1CC1: 50 05    | _func_lit
-1CC3: 00 04    | 0x0400
-1CC5: 50 05    | _func_lit
-1CC7: 20 00    | 0x0020
-1CC9: 58 0A    | _func_FILL
-1CCB: 5C 05    | _func_EXIT
+1CBA: 22 4C 1C | ent _func_UPDATE // UPDATE
+1CBD: 3C 1B    | _func_blkbuf     // (blkbuf)
+1CBF: 73 07    | _func_at         // @
+1CC1: 50 05    | _func_lit        // (lit)
+1CC3: 00 04    | 0x0400           //     0x0400
+1CC5: 50 05    | _func_lit        // (lit)
+1CC7: 20 00    | 0x0020           //     0x0020
+1CC9: 58 0A    | _func_FILL       // FILL
+1CCB: 5C 05    | _func_EXIT       // EXIT
 
 1CCD: 00
 _ascii_PP:     | "PP"
 1CCE: 50 50 00 00 BA 1C
-1CD4: 22 4C 1C | ent _func_UPDATE
-1CD7: 50 05    | _func_lit
-1CD9: 06 00    | 0x0006
-1CDB: 70 08    | _func_ltlt
-1CDD: 3C 1B    | _func_blkbuf
-1CDF: 73 07    | _func_at
-1CE1: 8F 07    | _func_plus
-1CE3: 49 06    | _func_DUP
-1CE5: 50 05    | _func_lit
-1CE7: 40 00    | 0x0040
-1CE9: 50 05    | _func_lit
-1CEB: 20 00    | 0x0020
-1CED: 58 0A    | _func_FILL
-1CEF: 50 05    | _func_lit
-1CF1: 0D 00    | 0x000D
-1CF3: 08 12    | _func_TIBSPLIT
-1CF5: 18 07    | _func_TUCK
-1CF7: A9 0A    | _func_STRLEN
-1CF9: 50 05    | _func_lit
-1CFB: 40 00    | 0x0040
-1CFD: 28 0A    | _func_MIN
-1CFF: 39 0A    | _func_MOVE
-1D01: 5C 05    | _func_EXIT
+1CD4: 22 4C 1C | ent _func_UPDATE // UPDATE
+1CD7: 50 05    | _func_lit        // (lit)
+1CD9: 06 00    | 0x0006           //     0x0006
+1CDB: 70 08    | _func_ltlt       // <<
+1CDD: 3C 1B    | _func_blkbuf     // (blkbuf)
+1CDF: 73 07    | _func_at         // @
+1CE1: 8F 07    | _func_plus       // +
+1CE3: 49 06    | _func_DUP        // DUP
+1CE5: 50 05    | _func_lit        // (lit)
+1CE7: 40 00    | 0x0040           //     0x0040
+1CE9: 50 05    | _func_lit        // (lit)
+1CEB: 20 00    | 0x0020           //     0x0020
+1CED: 58 0A    | _func_FILL       // FILL
+1CEF: 50 05    | _func_lit        // (lit)
+1CF1: 0D 00    | 0x000D           //     0x000D
+1CF3: 08 12    | _func_TIBSPLIT   // TIBSPLIT
+1CF5: 18 07    | _func_TUCK       // TUCK
+1CF7: A9 0A    | _func_STRLEN     // STRLEN
+1CF9: 50 05    | _func_lit        // (lit)
+1CFB: 40 00    | 0x0040           //     0x0040
+1CFD: 28 0A    | _func_MIN        // MIN
+1CFF: 39 0A    | _func_MOVE       // MOVE
+1D01: 5C 05    | _func_EXIT       // EXIT
 
 1D03: 00
 _ascii_LOAD:   | "LOAD"
 1D04: 4C 4F 41 44 00 00 D4 1C
-1D0C: 22 00 1C | ent _func_BLOCK
-1D0F: 50 05    | _func_lit
-1D11: 00 00    | 0x0000
-1D13: 1C 0B    | _func_TIB
-1D15: 50 05    | _func_lit
-1D17: 40 00    | 0x0040
-1D19: 8F 07    | _func_plus
-1D1B: 64 07    | _func_Cexclamation
-1D1D: 50 05    | _func_lit
-1D1F: 10 00    | 0x0010
-1D21: 50 05    | _func_lit
-1D23: 00 00    | 0x0000
-1D25: 8D 05    | _func_do
-1D27: 49 1D    | 0x1D49
-1D29: 49 06    | _func_DUP
-1D2B: 1C 0B    | _func_TIB
-1D2D: 50 05    | _func_lit
-1D2F: 40 00    | 0x0040
-1D31: 39 0A    | _func_MOVE
-1D33: 1C 0B    | _func_TIB
-1D35: B3 10    | _func_TIBPTR
-1D37: 38 07    | _func_exclamation
-1D39: 1C 0B    | _func_TIB
-1D3B: 8D 17    | _func_INTERPRET
-1D3D: 50 05    | _func_lit
-1D3F: 40 00    | 0x0040
-1D41: 8F 07    | _func_plus
-1D43: BF 05    | _func_loop
-1D45: 29 1D    | 0x1D29
-1D47: 14 06    | _func_UNLOOP
-1D49: 75 06    | _func_DROP
-1D4B: 5C 05    | _func_EXIT
+1D0C: 22 00 1C | ent _func_BLOCK    // BLOCK
+1D0F: 50 05    | _func_lit          // (lit)
+1D11: 00 00    | 0x0000             //     0x0000
+1D13: 1C 0B    | _func_TIB          // TIB
+1D15: 50 05    | _func_lit          // (lit)
+1D17: 40 00    | 0x0040             //     0x0040
+1D19: 8F 07    | _func_plus         // +
+1D1B: 64 07    | _func_Cexclamation // C!
+1D1D: 50 05    | _func_lit          // (lit)
+1D1F: 10 00    | 0x0010             //     0x0010
+1D21: 50 05    | _func_lit          // (lit)
+1D23: 00 00    | 0x0000             //     0x0000
+1D25: 8D 05    | _func_do           // (do)
+1D27: 49 1D    | 0x1D49             //     0x1D49
+1D29: 49 06    | _func_DUP          // DUP
+1D2B: 1C 0B    | _func_TIB          // TIB
+1D2D: 50 05    | _func_lit          // (lit)
+1D2F: 40 00    | 0x0040             //     0x0040
+1D31: 39 0A    | _func_MOVE         // MOVE
+1D33: 1C 0B    | _func_TIB          // TIB
+1D35: B3 10    | _func_TIBPTR       // TIBPTR
+1D37: 38 07    | _func_exclamation  // !
+1D39: 1C 0B    | _func_TIB          // TIB
+1D3B: 8D 17    | _func_INTERPRET    // INTERPRET
+1D3D: 50 05    | _func_lit          // (lit)
+1D3F: 40 00    | 0x0040             //     0x0040
+1D41: 8F 07    | _func_plus         // +
+1D43: BF 05    | _func_loop         // (loop)
+1D45: 29 1D    | 0x1D29             //     0x1D29
+1D47: 14 06    | _func_UNLOOP       // UNLOOP
+1D49: 75 06    | _func_DROP         // DROP
+1D4B: 5C 05    | _func_EXIT         // EXIT
 
 1D4D: 00
 _ascii_COLD:   | "COLD"

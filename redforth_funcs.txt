@@ -17,6 +17,9 @@ Notes:
 		SCRATCH - Address of 64 bytes of "scratch space" for short operations
 		TOP - Top of available memory
 		STATE - 1 if compiling, 0 if interpreting
+		(blkbuf) - Address of the block buffer
+		(blkno) - The sector number of the current block
+		(blkup) - 1 if the block has been modified, 0 otherwise
 
  Addr | Name      | Function
 ===============================================================================
@@ -158,8 +161,8 @@ Notes:
  128C | VARIABLE  | Creates a new FORTH variable initialized to 0
  129D | [         | Switches the FORTH shell into compilation mode
  12AE | ]         | Switches the FORTH shell into interpretation mode
- 12C2 | HIDE      | Hides a word
- 12E8 | REVEAL    | Reveals a word
+ 12C2 | HIDE      | Hides the last word
+ 12E8 | REVEAL    | Reveals the last word
  1311 | IMMEDIATE | Makes a FORTH word "immediate", it will execute when used at compile-time
  1337 | (does)    | Sets the address of the new word's ENT instruction to the return address
  134E | DOES>     | Builds the next word to invoke the following instructions
@@ -212,16 +215,17 @@ Notes:
  1A75 | DISKWS    | Writes 128 bytes from the address at S[1] to sector S[0] of the current disk, pops both values
  1AB9 | DISKRS    | Reads 128 bytes from sector S[0] of the current disk, copies them to address S[1], pops both values
  1AFE | SAVE"     | Saves the contents of memory to the current disk, setting its name to the next word
- 1B3C | (blkbuf)  | ?
- 1B4D | (blkno)   | ?
- 1B5E | (blkup)   | ?
- 1B6D | FLUSH     | ?
- 1BB7 | REVERT    | ?
- 1C00 | BLOCK     | ?
- 1C4C | UPDATE    | ?
- 1C60 | LIST      | ?
- 1CBA | WIPE      | ?
- 1D0C | LOAD      | ?
+ 1B3C | (blkbuf)  | Pushes the address of the (blkbuf) variable
+ 1B4D | (blkno)   | Pushes the address of the (blkno) variable
+ 1B5E | (blkup)   | Pushes the address of the (blkup) variable
+ 1B6D | FLUSH     | Flushes the block buffer to the disk
+ 1BB7 | REVERT    | Loads the block buffer from the disk
+ 1C00 | BLOCK     | Pops a number and selects that block minus 1 from the disk
+ 1C4C | UPDATE    | Marks the block as modified
+ 1C60 | LIST      | Prints the contents of the block buffer
+ 1CBA | WIPE      | Fills the block with spaces and marks it as modified
+ 1CD4 | PP        | Pops a number and puts the following text from the TIB into the block at offset n*64
+ 1D0C | LOAD      | Pops a number and interprets that block of text as a FORTH program
  1D56 | COLD      | Soft-reboots the interpreter, doesn't reset word list
  
 Extended Forth:
