@@ -1892,7 +1892,7 @@ _ascii_mod:    | "MOD"
 _ascii_ABORT:  | "ABORT"
 1098: 41 42 4F 52 54 00 00 90 10
 10A1: 22 78 16 | ent _func_SP0       // SP0
-10A4: F3 08    | _func_SPexclamation // !
+10A4: F3 08    | _func_SPexclamation // SP!
 10A6: 29 18    | _func_QUIT          // QUIT
 
 10A8: 00
@@ -2261,16 +2261,16 @@ _ascii_semicolon: | ";"
 _ascii_IF:     | "IF"
 138C: 49 46 00 01 7E 13
 _func_IF:
-1392: 22 50 05 | ent _func_lit
-1395: 7D 05    | _func_qbranch
-1397: 9F 11    | _func_comma
-1399: E0 10    | _func_HERE
-139B: 50 05    | _func_lit
-139D: 00 00    | 0x0000
-139F: 9F 11    | _func_comma
-13A1: 50 05    | _func_lit
-13A3: 00 00    | 0x0000
-13A5: 5C 05    | _func_EXIT
+1392: 22 50 05 | ent _func_lit // (lit)
+1395: 7D 05    | _func_qbranch //     (?branch)
+1397: 9F 11    | _func_comma   // ,
+1399: E0 10    | _func_HERE    // HERE
+139B: 50 05    | _func_lit     // (lit)
+139D: 00 00    | 0x0000        //     0x0000
+139F: 9F 11    | _func_comma   // ,
+13A1: 50 05    | _func_lit     // (lit)
+13A3: 00 00    | 0x0000        //     0x0000
+13A5: 5C 05    | _func_EXIT    // EXIT
 
 13A7: 00
 _ascii_THEN:   | "THEN"
