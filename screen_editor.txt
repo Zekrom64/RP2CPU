@@ -1,0 +1,91 @@
+// I = Text iterator
+// A = Character buffer
+// X = Start of text
+// Y = Text null terminator, line counter
+
+_start:
+0500: 18       | clc
+0501: FB       | xce
+0502: E2 20    | sep 0x20
+0504: A5 01    | lda (_var_bootterm)
+0506: EF 00    | mmu 0x00
+0508: C2 30    | rep 0x30
+050A: 9C 00 03 | stz [0x0300]
+050D: A9 00 02 | lda 0x0200
+0510: 8D 02 03 | sta [0x0302]
+0513: A9 20 00 | lda 0x0020
+0516: 8D 08 03 | sta [0x0308]
+0519: 9C 0A 03 | stz [0x030A]
+051C: A9 50 19 | lda 0x1950
+051F: 8D 0C 03 | sta [0x030C]
+0522: E2 20    | sep 0x20
+0524: 20 -- -- | jsr _clearterm
+	
+0527: A2 8B 05 | ldx _text
+052A: 9B       | txy
+052B: 74 00    | stz (X)
+_main_loop:
+052D: 20 -- -- | jsr _pollinput
+0530: 20 -- -- | jsr _clearterm
+0533: 20 -- -- | jsr _drawtext
+0536: 80 F5    | bra _main_loop
+	
+// Polls the key input buffer
+_pollinput:
+0538: AD 04 03 | lda [0x0304]
+053B: CD 05 03 | cmp [0x0305]
+053E: F0 F8    | beq _pollinput_ret
+0540: AD 06 03 | lda [0x0306]
+0543: C9 08    | cmp 0x08
+0545: F0 --    | beq _pollinput_bs
+0547: 99 00 00 | sta [Y]
+054A: C8       | iny
+054B: A9 00    | lda 0x00
+054D: 99 00 00 | sta [Y]
+_pollinput_next:
+0550: EE 04 03 | inc [0x0304]
+0553: 80 --    | bra _pollinput
+_pollinput_bs:
+0555: 88       | dey
+0556: A9 00    | lda 0x00
+0558: 99 00 00 | sta [Y]
+055B: 80 --    | bra _pollinput_next
+_pollinput_ret:
+055D: 60       | rts
+	
+// Draws the text
+_drawtext:
+055E: 5C       | txi
+055F: 5A       | phy
+0560: A0 00 00 | ldy 0x0000
+0563: 9C 00 03 | stz [0x0300]
+_drawtext_loop:
+0566: 42       | nxa
+0567: C9 00    | cmp 0x00
+0569: F0 --    | beq _drawtext_ret
+056B: C9 0D    | cmp 0x0D
+ beq _drawtext_cr
+056D: F0 --    | sta [Y+0x0300]
+056F: C8       | iny
+0570: C0 50 00 | cpy 0x50
+0573: D0 F3    | bne _drawtext_loop
+_drawtext_cr:
+0575: EE 00 03 | inc [0x0300]
+0578: A0 00 00 | ldy 0x0000
+057B: 80 E9    |  bra _drawtext_loop
+_drawtext_ret:
+057D: 7A       | ply
+057E: 60       | rts
+	
+// Clears the terminal
+_clearterm:
+057F: A9 01    | lda 1
+0581: 8D 07 03 | sta [0x0307]
+_clearterm_loop:
+0584: CB       | wai
+0585: CD 07 03 | cmp [0x0307]
+0588: F0 FA    | beq _clearterm_loop
+058A: 60       | rts
+	
+_text:
+058B:

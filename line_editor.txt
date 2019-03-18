@@ -1,0 +1,280 @@
+#arch "65EL02"
+
+///////////////
+// Zero Page //
+///////////////
+#origin 0x0000
+_var_bootdisk: byte ?
+_var_bootterm: byte ?
+
+_var_term: word ?
+_var_disk: word ?
+
+_var_maxmem: word ?
+
+_var_endoftext: word ?
+_var_startofbuf: word ?
+_var_endofcmd: byte ?
+
+_var_cursorline: word ?
+_var_cursorcolumn: word ?
+_var_curlineoffset: word ?
+
+#define FLAG_COMMAND 1
+_var_flags: byte ?
+
+
+#origin 0x00A0
+_mem_cmdtext: byte [80] ?
+
+/////////////
+// Program //
+/////////////
+#origin 0x0500
+#reloc 0x0000
+#pragma 65EL02 M16 X16
+
+_start:
+	// Initialize hardware
+	clc
+	xce
+	rep 0x30
+	lda 0x0300
+	mmu 0x01
+	mmu 0x02
+	lda (_var_bootterm)
+	and 0x00FF
+	mmu 0x00
+	
+	// Initialize zero-page
+	lda _mem_text
+	sta (_var_endoftext)
+	lda _mem_cmdtext
+	sta (_var_endofcmd)
+	
+	
+	// Clear terminal
+	sta (_var_term)	
+	jsr _sub_clearterm
+	lda 0x0000
+	sta [0x301]
+	
+_main_loop:
+	jsr _input_pollkey
+	wai
+	jmp _main_loop
+	
+	
+////////////////////
+// Input Handling //
+////////////////////
+	
+_input_pollkey:
+	lda (_var_term)
+	mmu 0x00
+	sep 0x20
+_lbl_pollkey_loop:
+	lda [0x0304]
+	cmp [0x0305]
+	beq _lbl_pollkey_exit // Break once no keys are in the buffer
+	lda [0x06]
+	inc [0x0304]
+	jsr _input_acceptkey
+	jmp _lbl_pollkey_loop
+_lbl_pollkey_exit:
+	rep 0x20
+	rts
+	
+#pragma 65EL02 M8
+_input_acceptkey:
+	// New line
+	cmp '\r'
+	beq _lbl_acceptkey_nl
+	cmp '\n'
+	beq _lbl_acceptkey_nl
+	// Backspace
+	cmp '\b'
+	beq _lbl_acceptkey_ctrl
+	// Delete
+	cmp 0x7F
+	beq _lbl_acceptkey_ctrl
+	// Tab
+	cmp '\t'
+	beq _lbl_acceptkey_tab
+	// Grave (Command)
+	cmp '`'
+	beq _lbl_acceptkey_grave
+	// Discard non-printing characters
+	cmp 0x20
+	bmi _lbl_acceptkey_ret
+	cmp 0x7F
+	bpl _lbl_acceptkey_ret
+	// Accept character
+	jsr _input_acceptchar
+_lbl_acceptkey_ret:
+	rts
+	
+_lbl_acceptkey_tab: // Tab prints <tabsize> spaces
+	ldx [_ivar_tabsize]
+	lda ' '
+_lbl_acceptkey_tabloop:
+	jsr _input_acceptchar
+	dex
+	bne _lbl_acceptkey_tabloop
+	rts
+	
+_lbl_acceptkey_nl: // New line (can enter commands)
+	lda (_var_flags)
+
+_lbl_acceptkey_ctrl: // Control characters
+	jsr _input_acceptctrl
+	rts
+
+_lbl_acceptkey_grave: // Command key
+	lda (_var_flags)
+	bit FLAG_COMMAND
+	beq _lbl_acceptkey_setcmd
+	trb FLAG_COMMAND
+	lda '`'
+	jsr _input_acceptchar
+	rts
+_lbl_acceptkey_setcmd:
+	ora FLAG_COMMAND
+	sta (_var_flags)
+	rts
+	
+// Appends a character to the current string
+_input_acceptchar:
+	pha
+	lda (_var_flags)
+	bit FLAG_COMMAND
+	beq _input_acceptchar_char
+	
+_input_acceptchar_char:
+	rts
+	
+_input_acceptchar_cctrl:
+	jsr _cmd_cctrl
+	rts
+	
+// Executes a control
+_input_acceptctrl:
+	rts
+
+#pragma 65EL02 M16
+
+///////////////////////
+// Command Processor //
+///////////////////////
+_cmd_execute:
+	rts
+	
+#pragma 65EL02 M8
+_cmd_cctrl:
+	
+
+#pragma 65EL02 M16
+
+///////////////////////////
+// Initialized Variables //
+///////////////////////////
+_ivar_tabsize: byte 4
+
+///////////////
+// Constants //
+///////////////
+_tbl_command_names:
+	
+_tbl_command_addresses:
+	
+/////////////////
+// Subroutines //
+/////////////////
+
+// Clears the terminal
+_sub_clearterm:
+	lda [_var_term]
+	mmu 0x00
+	lda 0x0020
+	sta [0x0308]
+	stz [0x030A]
+	lda 0x1950
+	sta [0x030C]
+	lda 1
+	sep 0x20
+	sta [0x0307]
+_lbl_clearterm_loop:
+	wai
+	lda [0x0307]
+	bne _lbl_clearterm_loop
+	rep 0x20
+	rts
+	
+// Finds the maximum amount of memory, stores highest address in A
+_sub_probemem:
+	ldx 0x1FFE
+	txa
+_lbl_probemem_loop:
+	sta [X]
+	cmp [X]
+	bne _lbl_probemem_eom
+	cpx 0xFFFE
+	beq _lbl_probemem_maxmem
+	txa
+	adc 0x2000
+	tax
+	bra _lbl_probemem_loop
+_lbl_probemem_eom:
+	txa
+	sbc 0x1FFF
+	rts
+_lbl_probemem_maxmem:
+	inx
+	txa
+	rts
+	
+// Returns the length of the string at I in A
+_sub_strlen:
+	sep 0x20
+	ldx 0
+_lbl_strlen_loop:
+	inx
+	nxa
+	bne _lbl_strlen_loop
+	dex
+	rep 0x20
+	txa
+	rts
+	
+// Copies the string at I to memory at X
+_sub_strcpy:
+	sep 0x20
+	dex
+_lbl_strcpy_loop:
+	inx
+	nxa
+	sta (X)
+	bne _lbl_strcpy_loop
+	rep 0x20
+	rts
+
+// Sets the zero flag if a character is 'printable'
+#pragma 65EL02 M8	
+_sub_isprint:
+	cmp 0x21
+	bmi _lbl_isprint_retnz
+	cmp 0x7F
+	bpl _lbl_isprint_retnz
+	sep 0x02
+	rts
+_lbl_isprint_retnz:
+	rep 0x02
+	rts
+#pragma 65EL02 M16
+
+/////////////////
+// Free Memory //
+/////////////////
+	
+_freemem:
+_mem_text:

@@ -1,0 +1,250 @@
+*= $0
+
+TERM_ROW = $0300
+TERM_CURX = $0301
+TERM_CURY = $0302
+TERM_CURXY = $0301
+TERM_CURMODE = $0303
+TERM_KSTART = $0304
+TERM_KPOS = $0305
+TERM_KNEXT = $0306
+TERM_BLITOP = $0307
+TERM_SRCX = $0308
+TERM_FILLCHAR = $0308
+TERM_SRCY = $0309
+TERM_SRCXY = $0308
+TERM_DSTX = $030A
+TERM_DSTY = $030B
+TERM_DSTXY = $030A
+TERM_OPW = $030C
+TERM_OPH = $030D
+TERM_OPWH = $030C
+TERM_WINDOW = $0310
+
+TERM_WIDTH = 80
+TERM_HEIGHT = 50
+
+CR = $0D
+BS = $08
+GRAVE = $60
+
+MBYTE .macro
+	sep #$20
+	.as
+.endm
+
+MWORD .macro
+	rep #$20
+	.al
+.endm
+
+; Zero Page
+.logical $00
+
+_driveaddr .byte ?
+_termaddr  .byte ?
+_var_flags     .byte ?
+
+.here
+
+*= $0
+
+.logical $500
+; Entry point
+_start
+	clc
+	xce
+	rep #$30
+.al
+.xl
+	lda @b _termaddr
+	mmu #$00
+	ldx #$0000
+	stz _var_flags
+	
+; Main function
+_main
+	jsr _term_cls
+	lda #$0000
+	sta TERM_CURXY
+-
+	jsr _input_pollkey
+	wai
+	bra -
+	
+; Clears the terminal
+_term_cls
+	lda #$0020
+	sta TERM_FILLCHAR
+	stz TERM_DSTXY
+	lda #$3250
+	sta TERM_OPWH
+	lda #$0020
+	#MBYTE
+	lda #$01
+	sta TERM_BLITOP
+-   wai
+	cmp TERM_BLITOP
+	beq -
+	#MWORD
+	rts
+	
+.as
+_input_pollkey
+	sep #$20
+	lda TERM_KSTART
+	cmp TERM_KPOS
+	bne +
+	rep #$20
+	rts
++	lda TERM_KNEXT
+	inc TERM_KSTART
+	jsr _input_acceptkey
+	jsr _term_bound
+	bra _input_pollkey
+	
+_input_acceptkey
+	cmp #GRAVE
+	beq _input_pollkey_grave
+	cmp #CR
+	beq _input_pollkey_cr
+	cmp #BS
+	beq _input_pollkey_bs
+	pha
+	lda _var_flags
+	bit #$01
+	beq +
+	pla
+	bra _input_command
++	lda TERM_CURX
+	tax
+	lda TERM_CURY
+	sta TERM_ROW
+	pla
+	sta TERM_WINDOW,X
+	inc TERM_CURX
+	rts
+	
+_input_pollkey_bs
+	lda TERM_CURX
+	tax
+	lda #$20
+	dex
+	sta TERM_WINDOW,X
+	sep #$10
+	stx TERM_CURX
+	rep #$10
+	rts
+	
+_input_pollkey_cr
+	stz TERM_CURX
+	inc TERM_CURY
+	lda TERM_CURY
+	sta TERM_ROW
+	rts
+	
+_input_pollkey_grave
+	lda _var_flags
+	pha
+	eor #$01
+	sta _var_flags
+	pla
+	and #$01
+	inc A
+	sta TERM_CURMODE
+	rts
+	
+_input_command
+	cmp #"8"
+	bne +
+	dec TERM_CURY
+	lda TERM_CURY
+	sta TERM_ROW
+	rts
++	cmp #"4"
+	bne +
+	dec TERM_CURX
+	rts
++	cmp #"2"
+	bne +
+	inc TERM_CURY
+	lda TERM_CURY
+	sta TERM_ROW
+	rts
++	cmp #"6"
+	bne +
+	inc TERM_CURX
+	rts
++	cmp #"c"
+	bne +
+	lda TERM_CURX
+	tay
+	jsr _input_hexbyte
+	sta TERM_WINDOW,Y
+	inc TERM_CURX
++	rts
+	
+_term_bound
+	lda TERM_CURY
+	cmp #$FF
+	bne +
+	stz TERM_CURY
+	bra ++
++	cmp #(TERM_HEIGHT-1)
+	bmi +
+	lda #(TERM_HEIGHT-1)
+	sta TERM_CURY
++	lda TERM_CURX
+	cmp #$FF
+	bne +
+	stz TERM_CURX
+	bra ++
++	cmp #(TERM_WIDTH-1)
+	bmi +
+	lda #(TERM_WIDTH-1)
+	sta TERM_CURX
++	rts
+
+_input_nextchar
+	lda TERM_KSTART
+	cmp TERM_KPOS
+	bne +
+	wai
+	bra _input_nextchar
++	lda TERM_KNEXT
+	inc TERM_KSTART
+	rts
+	
+_input_hexdigit
+	jsr _input_nextchar
+	cmp #"a"
+	bmi +
+	sec
+	sbc #$57
+	rts
++	cmp #"A"
+	bmi +
+	sec
+	sbc #$37
+	rts
++	sec
+	sbc #$30
+	rts
+	
+_input_hexbyte
+	tsx
+	jsr _input_hexdigit
+	asl
+	asl
+	asl
+	asl
+	pha
+	jsr _input_hexdigit
+	ora $00,S
+	txs
+	rts
+.al
+
+.here
+
+.align 128, $00

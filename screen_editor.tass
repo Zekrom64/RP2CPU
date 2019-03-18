@@ -1,0 +1,99 @@
+*= $0
+
+.logical $500
+_start
+	clc
+	xce
+	rep #$10
+.xl
+	sep #$20
+.as
+	lda @b$01
+	mmu #$00
+	rep #$30
+.al
+	stz $0300
+	lda #$0200
+	sta $0302
+	lda #$0020
+	sta $0308
+	stz $030A
+	lda #$1950
+	sta $030C
+	jsr _clearterm
+
+	; X = Start of text
+; Y = End of text
+	ldx #_text
+	txy
+	stz $00,X
+_main_loop
+;	jsr _pollinput
+	jsr _drawtext
+	wai
+	bra _main_loop
+	
+; Polls the keyboard input
+_pollinput
+	lda $0304
+	cmp $0305
+	beq _pollinput_ret
+	sep #$20
+	lda $0306
+	rep #$20
+	inc $0304
+	jsr _charinput
+	bra _pollinput
+_pollinput_ret
+	rts
+
+; Inputs a character	
+_charinput
+	sep #$20
+	cmp #$08 ; Backspace
+	beq _charinput_bs
+	sta $00,Y
+	iny
+	lda #$00
+	sta $00,Y
+	rep #$20
+	rts
+_charinput_bs
+	lda #$00
+	sta $00,Y
+	rep #$20
+	cpy #_text
+	sep #$20
+	beq _charinput_ret
+	dey
+_charinput_ret
+	rep #$20
+	rts
+
+; Draws the text to the terminal
+_drawtext
+	txi
+	stz $0301
+	sep #$20
+	stz $0300
+	rep #$20
+	rts
+	
+; Clears the terminal
+_clearterm
+	sep #$20
+	lda #$01
+	sta $0307
+_clearterm_loop
+	wai
+	cmp $0307
+	beq _clearterm_loop
+	rep #$20
+	rts
+	
+; Memory containing the screen text
+_text
+	
+.here
+
+.align 128, $00
