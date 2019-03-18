@@ -21,6 +21,10 @@ TERM_OPH = $030D
 TERM_OPWH = $030C
 TERM_WINDOW = $0310
 
+CURMODE_HIDE = $00
+CURMODE_SOLID = $01
+CURMODE_BLINK = $02
+
 TERM_WIDTH = 80
 TERM_HEIGHT = 50
 
@@ -182,6 +186,14 @@ _input_command
 	jsr _input_hexbyte
 	sta TERM_WINDOW,Y
 	inc TERM_CURX
+	rts
++	cmp #"t"
+	bne +
+	jsr _input_hexbyte
+	stz TERM_CURMODE
+	mmu #$00
+	lda #CURMODE_SOLID
+	sta TERM_CURMODE
 +	rts
 	
 _term_bound
