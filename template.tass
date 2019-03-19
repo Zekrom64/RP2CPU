@@ -1,0 +1,59 @@
+;;;;;;;;;;;;;;;;;;;;;
+; Predefined Header ;
+;;;;;;;;;;;;;;;;;;;;;
+
+*= 0
+
+MBYTE .macro
+	sep #$20
+	.as
+.endm
+
+MWORD .macro
+	rep #$20
+	.al
+.endm
+
+XBYTE .macro
+	sep #$10
+	.xs
+.endm
+
+XWORD .macro
+	rep #$10
+	.xl
+.endm
+
+MXBYTE .macro
+	sep #$30
+	.as
+	.xs
+.endm
+
+MXWORD .macro
+	rep #$30
+	.al
+	.xl
+.endm
+
+;;;;;;;;;;;;;
+; Zero Page ;
+;;;;;;;;;;;;;
+.logical $00
+
+_driveaddr .byte ?
+_termaddr  .byte ?
+
+.here
+
+*= $0
+
+.logical $500
+;;;;;;;;;;;;;;;
+; Entry point ;
+;;;;;;;;;;;;;;;
+_start
+
+.here
+
+.align 128, $00
