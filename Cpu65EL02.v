@@ -200,7 +200,10 @@ module Cpu65EL02(
 	// Instruction Decode //
 	////////////////////////
 	
-	/* 0 - Instruction fetch / Bus Control
+	
+	/* Instruction decode happens over several phases:
+	 * 
+	 * 0 - Instruction fetch / Bus Control
 	 * 1 - Read address LSB
 	 * 2 - Read address MSB
 	 * 3 - Read indirect LSB
@@ -209,6 +212,22 @@ module Cpu65EL02(
 	 * 6 - Read value MSB
 	 * 7 - Write value LSB
 	 * 8 - Write value MSB
+	 * 9 - Extended value write
+	 *
+	 * The initial instruction is decoded into a microcode word which
+	 * directs the Address and Data sequencers. The sequencers control
+	 * the stepping of the instruction through the phases. Once both
+	 * sequencers are finished, the next instruction is fetched.
+	 */
+	 
+	/* The address sequencer controls the generation of addresses for
+	 * memory access. This controls the different addressing modes and
+	 * special instruction addressing (eg. NXA)
+	 */
+	 
+	/* The data sequencer controls the flow of data through the different
+	 * components of the CPU (ALU, registers, MMU, bus I/O). It controls,
+	 * with the direction of the uCode word, what the instruction does.
 	 */
 	
 	///////////////////////
@@ -254,9 +273,10 @@ module Cpu65EL02(
 			
 			end
 			8: begin // Write value MSB
-				addressOut = addressOut + 1;
-				readAddress = 0;
-				writeAddress = 1;
+			
+			end
+			9: begin // Extended write
+			
 			end
 			endcase
 		end
@@ -273,6 +293,9 @@ module Cpu65EL02(
 			case(insnPhase)
 			0: begin // Instruction fetch: Load instruction
 				insnOpcode = DataIn;
+				insnAddress[15:0] = 0;
+				insnIndirect[15:0] = 0;
+				insnValueIn[15:0] = 0;
 			end
 			1: begin // Read address LSB
 				insnAddress[7:0] = DataIn;
@@ -297,6 +320,9 @@ module Cpu65EL02(
 			end
 			8: begin // Write value MSB
 				DataOut = insnValueOut[15:8];
+			end
+			9: begin // Extended value write
+				DataOut = insnValueOut[7:0];
 			end
 			endcase
 			

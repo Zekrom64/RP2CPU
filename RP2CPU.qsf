@@ -48,18 +48,33 @@ set_global_assignment -name MAX_CORE_JUNCTION_TEMP 85
 set_global_assignment -name ERROR_CHECK_FREQUENCY_DIVISOR 1
 set_global_assignment -name VERILOG_FILE RP2CPU.v
 set_global_assignment -name VERILOG_FILE Cpu65EL02.v
+set_global_assignment -name VERILOG_FILE Cpu65EL02ALU.v
+set_global_assignment -name VERILOG_FILE Cpu65EL02AddrSeq.v
+set_global_assignment -name VERILOG_FILE Cpu65EL02DataSeq.v
+set_global_assignment -name VERILOG_FILE EloIOExpander.v
+set_global_assignment -name VERILOG_FILE EloCPU.v
+set_global_assignment -name VERILOG_FILE EloDisplay.v
+set_global_assignment -name VERILOG_FILE EloDiskDriveRAM.v
+set_global_assignment -name VERILOG_FILE AddressWindow.v
+set_global_assignment -name VERILOG_FILE Display2VGA.v
+set_global_assignment -name VERILOG_FILE PS2ASCII.v
+set_global_assignment -name VERILOG_FILE Abs8.v
+set_global_assignment -name VERILOG_FILE Abs16.v
+set_global_assignment -name VERILOG_FILE Abs32.v
+set_global_assignment -name VERILOG_FILE AsyncLatch.v
+set_global_assignment -name VERILOG_FILE SerialIn.v
+set_global_assignment -name QIP_FILE AlteraMultiplier.qip
+set_global_assignment -name QIP_FILE AlteraCompareUnsigned.qip
+set_global_assignment -name QIP_FILE AlteraROMFont.qip
+set_global_assignment -name QIP_FILE AlteraRAMBootDisk.qip
+set_global_assignment -name QIP_FILE AlteraDivider.qip
+set_global_assignment -name QIP_FILE AlteraRAM8Kx8.qip
+set_global_assignment -name HEX_FILE rpcboot.hex
+set_global_assignment -name HEX_FILE displayfont.hex
+set_global_assignment -name SOURCE_FILE displayfont.rhex
 set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
 set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
 set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
-set_global_assignment -name QIP_FILE AlteraMultiplier.qip
-set_global_assignment -name QIP_FILE AlteraCompareUnsigned.qip
-set_global_assignment -name VERILOG_FILE AddressWindow.v
-set_global_assignment -name VERILOG_FILE EloIOExpander.v
-set_global_assignment -name VERILOG_FILE EloCPU.v
-set_global_assignment -name HEX_FILE rpcboot.hex
-set_global_assignment -name VERILOG_FILE EloDisplay.v
-set_global_assignment -name HEX_FILE displayfont.hex
-set_global_assignment -name VERILOG_FILE Display2VGA.v
 set_global_assignment -name STRATIX_DEVICE_IO_STANDARD "3.3-V LVTTL"
 set_location_assignment PIN_17 -to Clock
 set_location_assignment PIN_142 -to HSync
@@ -86,17 +101,4 @@ set_global_assignment -name EDA_TEST_BENCH_FILE EloCPU.v -section_id RP2CPU
 set_global_assignment -name EDA_TEST_BENCH_FILE EloDisplay.v -section_id RP2CPU
 set_global_assignment -name EDA_TEST_BENCH_FILE EloIOExpander.v -section_id RP2CPU
 set_global_assignment -name EDA_TEST_BENCH_FILE Cpu65EL02.v -section_id RP2CPU
-set_global_assignment -name QIP_FILE AlteraROMFont.qip
-set_global_assignment -name SOURCE_FILE displayfont.rhex
-set_global_assignment -name VERILOG_FILE PS2ASCII.v
-set_global_assignment -name QIP_FILE AlteraRAMBootDisk.qip
-set_global_assignment -name VERILOG_FILE EloDiskDriveRAM.v
-set_global_assignment -name VERILOG_FILE Cpu65EL02ALU.v
-set_global_assignment -name QIP_FILE AlteraDivider.qip
-set_global_assignment -name VERILOG_FILE Abs8.v
-set_global_assignment -name VERILOG_FILE Abs16.v
-set_global_assignment -name VERILOG_FILE Abs32.v
-set_global_assignment -name VERILOG_FILE AsyncLatch.v
-set_global_assignment -name VERILOG_FILE SerialIn.v
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
-set_global_assignment -name QIP_FILE AlteraRAM8Kx8.qip
