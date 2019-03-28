@@ -92,22 +92,23 @@ DRIVECMD_WRITESEC = $05
 ;;;;;;;;;;;;;
 .logical $00
 
-_driveaddr .byte ?
-_termaddr  .byte ?
+driveaddr .byte ?
+termaddr  .byte ?
 
-_temp0 .word ?
-_temp1 .word ?
+temp0 .word ?
+temp1 .word ?
 
-_ptr_top_of_mem .word ?
-_var_current_line .word ?
-_ptr_end_of_text .word ?
-_ptr_end_of_cmd .word ?
-_ptr_cursoraddr .word ?
-_ptr_text_line .word ?
+ptr_top_of_mem .word ?
+varw_current_line .word ?
+ptr_end_of_text .word ?
+ptr_end_of_cmd .word ?
+ptr_cursoraddr .word ?
+ptr_text_line .word ?
+varw_num_lines .word ?
 
-_text_cmdbuf .fill 81
+text_cmdbuf .fill 81
 
-_flags_state .byte ?
+flags_state .byte ?
 
 STATE_FLAG_COMMAND = $01
 
@@ -124,14 +125,14 @@ _start
 	clc
 	xce
 
-	; Set POR and BRK
+	; Set POR and BRK addresses
 	MXWORD
 	lda #_por_start
 	mmu #MMU_SET_POR
 	lda #_brk_start
 	mmu #MMU_SET_BRK
 	
-	; Clear Zero Page
+	; Clear Zero Page (except Redbus IDs)
 	ldx #$0002
 -	stz $00,X
 	inx
@@ -139,24 +140,24 @@ _start
 	cpx #$0100
 	bne -
 
-	; Erase existing string
-	stz _ptr_start_of_mem
+	; Hide any existing string
+	stz cptr_start_of_mem
 	
 	jmp _por_start
 	
 ; BRK is used for debugging
 _brk_start
 	MXWORD
-	sta _temp0 ; Save A to temp0
+	sta temp0 ; Save A to temp0
 	txa
 	tsx
-	stx _temp1 ; Save S to temp1
+	stx temp1 ; Save S to temp1
 	ldx #$100  ; Load S with top of zero page
 	txs
 	tax
 	
-	lda _termaddr ; Map the terminal
-	zea
+	lda termaddr ; Map the terminal
+	and #$00FF
 	mmu #MMU_MAP
 	
 	stz TERM_ROW ; Print first row, "Debug:"
@@ -172,23 +173,23 @@ _brk_start
 	
 	lda #"A:" ; Display A
 	sta TERM_WINDOW
-	lda _temp0
+	lda temp0
 	xba
-	jsr _to_hex_chars
+	jsr to_hex_chars
 	sta TERM_WINDOW+2
-	lda _temp0
-	jsr _to_hex_chars
+	lda temp0
+	jsr to_hex_chars
 	sta TERM_WINDOW+4
 	lda #"  "
 	sta TERM_WINDOW+6
 	lda #"S:" ; Display S
 	sta TERM_WINDOW+8
-	lda _temp1
+	lda temp1
 	xba
-	jsr _to_hex_chars
+	jsr to_hex_chars
 	sta TERM_WINDOW+10
-	lda _temp1
-	jsr _to_hex_chars
+	lda temp1
+	jsr to_hex_chars
 	sta TERM_WINDOW+12
 	inc TERM_ROW
 	
@@ -196,10 +197,10 @@ _brk_start
 	sta TERM_WINDOW
 	tda
 	xba
-	jsr _to_hex_chars
+	jsr to_hex_chars
 	sta TERM_WINDOW+2
 	tda
-	jsr _to_hex_chars
+	jsr to_hex_chars
 	sta TERM_WINDOW+4
 	lda #"  "
 	sta TERM_WINDOW+6
@@ -211,10 +212,10 @@ _brk_start
 	plx
 	pha
 	xba
-	jsr _to_hex_chars
+	jsr to_hex_chars
 	sta TERM_WINDOW+10
 	pla
-	jsr _to_hex_chars
+	jsr to_hex_chars
 	sta TERM_WINDOW+12
 	inc TERM_ROW
 	
@@ -222,10 +223,10 @@ _brk_start
 	sta TERM_WINDOW
 	txa
 	xba
-	jsr _to_hex_chars
+	jsr to_hex_chars
 	sta TERM_WINDOW+2
 	txa
-	jsr _to_hex_chars
+	jsr to_hex_chars
 	sta TERM_WINDOW+4
 	lda #"  "
 	sta TERM_WINDOW+6
@@ -237,10 +238,10 @@ _brk_start
 	plx
 	pha
 	xba
-	jsr _to_hex_chars
+	jsr to_hex_chars
 	sta TERM_WINDOW+10
 	pla
-	jsr _to_hex_chars
+	jsr to_hex_chars
 	sta TERM_WINDOW+12
 	inc TERM_ROW
 	
@@ -248,26 +249,26 @@ _brk_start
 	sta TERM_WINDOW
 	tya
 	xba
-	jsr _to_hex_chars
+	jsr to_hex_chars
 	sta TERM_WINDOW+2
 	tya
-	jsr _to_hex_chars
+	jsr to_hex_chars
 	sta TERM_WINDOW+4
 	lda #" P"
 	sta TERM_WINDOW+6
 	lda #"C:" ; Display old PC
 	sta TERM_WINDOW+8
-	lda _temp1
+	lda temp1
 	inc A
 	tax
 	lda $00,X
 	dec A
 	pha
 	xba
-	jsr _to_hex_chars
+	jsr to_hex_chars
 	sta TERM_WINDOW+10
 	pla
-	jsr _to_hex_chars
+	jsr to_hex_chars
 	sta TERM_WINDOW+12
 	inc TERM_ROW
 	
@@ -277,7 +278,7 @@ _brk_start
 	MBYTE
 	lda $00,X
 	MWORD
-	jsr _to_hex_chars
+	jsr to_hex_chars
 	sta TERM_WINDOW+2
 	
 	stp ; Halt the CPU
@@ -285,7 +286,7 @@ _brk_start
 _por_start
 	; Setup the MMU
 	MBYTE
-	lda _termaddr
+	lda termaddr
 	mmu #MMU_MAP
 	MXWORD
 	
@@ -308,10 +309,33 @@ _por_start
 	tax
 	bra -
 +	inx
-	stx _ptr_top_of_mem
+	stx ptr_top_of_mem
 	
-	; Clear the terminal
-	jsr _term_clear
+	; Set initial values of variables
+	; Zero
+	stz varw_current_line
+	stz varw_num_lines
+	
+	; Start of memory pointer
+	lda #cptr_start_of_mem
+	sta ptr_end_of_text
+	sta ptr_cursoraddr
+	sta ptr_text_line
+	
+	; Start of text buffer pointer
+	lda #text_cmdbuf
+	sta ptr_end_of_cmd
+	
+	jsr draw_screen
+	
+	; Draw bottom row
+	ldx #0
+	lda #"__"
+-	sta TERM_WINDOW,X
+	inx
+	inx
+	cpx #80
+	bne -
 	
 	; Set terminal memory row to 0
 	; Set cursor to (6,0)
@@ -323,35 +347,11 @@ _por_start
 	sta TERM_CURX
 	MWORD
 	
-	; Set variables
-	stz _var_current_line
-	lda #_ptr_start_of_mem
-	sta _ptr_end_of_text
-	sta _ptr_cursoraddr
-	sta _ptr_text_line
-	lda #_text_cmdbuf
-	sta _ptr_end_of_cmd
-	
-	jsr _draw_screen
-	
-	; Draw bottom row
-	ldx #0
-	lda #"__"
--	sta TERM_WINDOW,X
-	inx
-	inx
-	cpx #80
-	bne -
-	
-	lda TERM_ROW
-	and #$FF00
-	sta TERM_ROW
-	
 ;;;;;;;;;;;;;
 ; Main Loop ;
 ;;;;;;;;;;;;;
 _main_loop
-	jsr _input_poll
+	jsr input_poll
 
 	wai
 	bra _main_loop
@@ -362,22 +362,23 @@ _main_loop
 
 .as ; Accumulator is 8-bit for character handling
 ; Polls the keyboard for input
-_input_poll
+input_poll .proc
 	sep #$20
 -	lda TERM_KB_POS
 	cmp TERM_KB_START
 	beq +
 	lda TERM_KB_KEY
 	inc TERM_KB_START
-	jsr _input_key
+	jsr input_key
 	bra -
 +	rep #$20
 	rts
+.pend
 	
 ; Inputs a key character
-_input_key
+input_key .proc
 	pha
-	lda _flags_state
+	lda flags_state
 	bit #STATE_FLAG_COMMAND
 	bne ++
 
@@ -386,10 +387,10 @@ _input_key
 	cmp #"~" ; Tilde, command key
 	bne +
 	; Toggle to command mode
-	jsr _input_togglemode
+	jsr input_togglemode
 	rts
 	
-+	jsr _input_textkey
++	jsr input_textkey
 	rts
 
 	; Command mode
@@ -397,72 +398,91 @@ _input_key
 	cmp #"~" ; Tilde, command key
 	bne +
 	; If start of buffer
-	ldx _ptr_end_of_cmd
-	cpx #_text_cmdbuf
+	ldx ptr_end_of_cmd
+	cpx #text_cmdbuf
 	bne +
 	; Print a '~', switch mode
-	jsr _input_textkey
-	jsr _input_togglemode
+	jsr input_togglemode
+	jsr input_textkey
 	rts
+	
++	cmp #'4' ; Cursor back
+	bne ++
+	ldx ptr_cursoraddr
+	cpx #cptr_start_of_mem
+	bne +
+	rts
+	
++	lda $00,X
+	cmp #$0D ; 
+	rts
+	
++	cmp #'6' ; Cursor forward
+	bne ++
+	ldx ptr_cursoraddr
+	cpx ptr_end_of_text
+	bne +
++	rts
 
 +	cmp #$0D ; Carriage return
 	bne +
 	; Run the command, toggle mode
-	ldx _ptr_end_of_cmd
+	ldx ptr_end_of_cmd
 	stz $00,X
-	jsr _input_runcmd
-	jsr _input_togglemode
+	jsr input_runcmd
+	jsr input_togglemode
 	; Cleanup command buffer
-	ldx #_text_cmdbuf
-	stx _ptr_end_of_cmd
+	ldx #text_cmdbuf
+	stx ptr_end_of_cmd
 	stz $00,X
 	rts	
 
 +	cmp #$08 ; Backspace
 	bne ++
 	; If not at start of buffer
-	ldx _ptr_end_of_cmd
-	cpx #_text_cmdbuf
+	ldx ptr_end_of_cmd
+	cpx #text_cmdbuf
 	beq +
 	; Go back one, erase character
 	dex
 	stz $00,X
-	stx _ptr_end_of_cmd
+	stx ptr_end_of_cmd
 	; Update display
 	txa
 	sec
-	sbc #_text_cmdbuf
+	sbc #text_cmdbuf
 	tax
 	lda #$DF
 	sta TERM_WINDOW,X
 +	rts
 	
 +	; If not at end of buffer
-	ldx _ptr_end_of_cmd
-	cpx #(_text_cmdbuf+80)
+	ldx ptr_end_of_cmd
+	cpx #(text_cmdbuf+80)
 	beq +
 	; Store character to buffer
 	sta $00,X
 	inx
-	stx _ptr_end_of_cmd
+	stx ptr_end_of_cmd
 	; Draw character to display
 	dex
 	pha
 	txa
 	sec
-	sbc #_text_cmdbuf
+	sbc #text_cmdbuf
 	tax
 	pla
 	clc
 	adc #$80
 	sta TERM_WINDOW,X
 +	rts
+.pend
 	
 ; Toggles between display and command mode
-_input_togglemode
-	lda _flags_state
+input_togglemode .proc
+	lda flags_state
 	eor STATE_FLAG_COMMAND
-	sta _flags_state
+	sta flags_state
 	bne +
 	; Change to text mode
 	; Clear command display line
@@ -497,12 +517,13 @@ _input_togglemode
 	cpx #80
 	bne -
 	rts
+.pend
 
 ; Runs the command currently in the command buffer
-_input_runcmd
-	ldx #_table_commands ; I = command table pointer
+input_runcmd .proc
+	ldx #table_commands ; I = command table pointer
 	txi
-	ldx #_text_cmdbuf    ; X = command buffer pointer
+	ldx #text_cmdbuf    ; X = command buffer pointer
 	txy                  ; Y = initial command buffer pointer
 	
 	; Compare character strings
@@ -543,42 +564,88 @@ _input_runcmd
 	MBYTE
 	txi
 	rts
+.pend
 	
 ; Inputs a key in text mode
-;;; TODO - Complete text input ;;;
-_input_textkey
+input_textkey .proc
 	cmp #$08 ; Backspace
 	beq +
 	jmp _input_textkey_nonbs
 
-	; Erase last character
-+	ldx _ptr_cursoraddr
-	cpx #_ptr_end_of_text
+	; Backspace handling is particularly complex
++	ldx ptr_cursoraddr 
+	cpx #cptr_start_of_mem ; Can't backspace at start of text
 	bne +
+	rts
++	cpx ptr_end_of_text ; Special case if in middle of text
+	beq _input_textkey_bsend
 	
+	dex
+	lda $00,X ; Can't replace Tab or CR, skip
+	cmp #$0D
+	beq +
+	cmp #$09
+	bne ++
++	jsr inpututil_curback
+	rts
+
++	lda #' ' ; Replace last character with a space
+	sta $00,X
+	stx ptr_cursoraddr
+	dec TERM_CURX
+	lda TERM_CURX
+	ldx #0
+	tax
+	lda #' '
+	sta TERM_WINDOW,X
 	rts
 	
-	
-+	dex ; 
+; At end of text
+_input_textkey_bsend
++	dex ; Easy in memory, just erase last character
 	lda $00,X
 	stz $00,X
-	stx _ptr_end_of_text
+	stx ptr_cursoraddr
+	stx ptr_end_of_text
 	
-	; Update display
+	; Updating the display, however, depends on character removed
 	cmp #$0D ; Removed CR
-	bne +
+	bne ++
+	lda TERM_CURY
+	; If we're at the top we need to scroll
+	cmp #0
+	beq +
+	dec A
+	sta TERM_CURY
+	; TODO - Cursor to end of line
+	rts
++	jsr draw_scrollup
+	; TODO - Cursor to end of line
+	rts
 	
 +	cmp #$09 ; Removed TAB
 	bne +
 	
-	lda TERM_CURX
-	sec
-	sbc _var_tabsize
-	sta TERM_CURX
+	lda TERM_CURX ; Move cursor back by tab size, replace with spaces
+	ldx #0
+	tax
+	lda varb_tabsize
+	ldy #0
+	tay
+	lda #' '
+
+-	sta TERM_WINDOW,X
+	dex
+	dey
+	bpl -
 	
+	txa
+	inc A
+	sta TERM_CURX	
 	rts
 
 +	; Removed regular character
+	; Replace with space, cursor back one
 	lda TERM_CURX
 	dec A
 	tax
@@ -587,37 +654,41 @@ _input_textkey
 	txa
 	sta TERM_CURX
 	rts
+	
 
+; Non-backspace character input
 _input_textkey_nonbs
 	cmp #$0D ; Carriage return
 	bne +
 	; Append character to text
-	jsr _input_appendtext
+	jsr input_appendtext
 	
 	; Draw character to display
-	
+	rts
 
 +	cmp #$09 ; Tab
-	bne ++
+	bne +++
 	lda TERM_CURX
 	clc
-	adc _var_tabsize
+	adc varb_tabsize
 	cmp #80 ; Don't append if it pushes the cursor off-screen
 	bcc +
 	rts
 	
 +	lda #$09
 	; Append character to text
-	jsr _input_appendtext
+	jsr input_appendtext
+	bcs +
+	rts
 	
 	; Draw character to display
-	lda TERM_CURX
++	lda TERM_CURX
 	ldx #0
 	tax
 	ldy #0
-	lda _var_tabsize
+	lda varb_tabsize
 	tay
-	lda #' '
+	lda varb_tabchar
 -	sta TERM_WINDOW,X
 	inx
 	dey
@@ -637,10 +708,12 @@ _input_textkey_nonbs
 	
 +	pla
 	; Append character to text
-	jsr _input_appendtext
+	jsr input_appendtext
+	bcs +
+	rts
 	
 	; Append character to display
-	pha
++	pha
 	lda TERM_CURX
 	ldx #0
 	tax
@@ -649,20 +722,59 @@ _input_textkey_nonbs
 	inc TERM_CURX
 	
 	rts
+.pend
 	
-; Appends the character in A to the current text
-_input_appendtext
-	ldx _ptr_end_of_text
+; Appends the character in A to the current text, carry indicates success
+input_appendtext .proc
+	ldx ptr_cursoraddr
+	cpx ptr_end_of_text
+	bne +
+	
+	; Easy if appending
 	sta $00,X
 	inx
-	stx _ptr_end_of_text
 	stz $00,X
+	stx ptr_cursoraddr
+	stx ptr_end_of_text
+	sec
+	rts
+	
+	; Special handling if not at end of text
++	cmp #$09 ; Tab or CR can only overwrite itself
+	beq +
+	cmp #$0D
+	bne +++
++	pha
+	lda $00,X
+	
+-	cmp $00,S
+	clc
+	bne +
+	inx
+	stx ptr_cursoraddr
+	sec
++	pla
 	rts
 
++	pha ; Can only overwrite a Tab or CR with itself
+	lda $00,X
+	cmp #$09 
+	beq -
+	cmp #$0D
+	beq -
+
++	pla ; Overwrite character, increment
+	sta $00,X
+	inx
+	stx ptr_cursoraddr
+	sec
+	rts
+.pend
+
 ; Moves the text line pointer to the previous line	
-_inpututil_prevline
-	ldx _ptr_text_line
-	cpx #_ptr_start_of_mem
+inpututil_prevline .proc
+	ldx ptr_text_line
+	cpx #cptr_start_of_mem
 	bne +
 	rts
 +	dex
@@ -670,14 +782,49 @@ _inpututil_prevline
 	lda #$0D
 -	cmp $00,X
 	beq +
-	cpx #_ptr_start_of_mem
+	cpx #cptr_start_of_mem
 	beq ++
 	dex
 	bra -
 
 +	inx
-+	stx _ptr_text_line
++	stx ptr_text_line
 	rts
+.pend
+
+inpututil_curforward .proc
+
+	rts
+.pend
+
+inpututil_curback .proc
+	ldx ptr_cursoraddr
+	cpx #cptr_start_of_mem
+	bne +
+	rts
++	dex
+	stx ptr_cursoraddr
+	lda $00,X
+	
+	cmp #$0D ; CR
+	bne +
+	
+	
++	cmp #$09 ; Tab
+	bne +
+	lda TERM_CURX
+	sec
+	sbc varb_tabsize
+	sta TERM_CURX
+	rts
+	
++	dec TERM_CURX
+	rts
+.pend
+
+inpututil_curendofline .proc
+	
+.pend
 
 .al
 
@@ -686,7 +833,7 @@ _inpututil_prevline
 ;;;;;;;;;;;;;;;;;;;;;
 	
 ; Converts the 4-bit hex digit in A to its character, stored in A
-_to_hex_digit
+to_hex_digit .proc
 	; Work on bytes only
 	sep #$20
 	.as
@@ -701,9 +848,10 @@ _to_hex_digit
 	rep #$20
 	rts
 	.al
+.pend
 
 ; Converts a hex byte in A to the pair of hexadecimal characters, stored in A
-_to_hex_chars
+to_hex_chars .proc
 	and #$00FF ; Mask
 	pha        ; Save
 	asl        ; << 4
@@ -713,19 +861,22 @@ _to_hex_chars
 	and #$0F00 ; Mask
 	ora $00,S  ; Or
 	and #$0F0F ; Mask
-	jsr _to_hex_digit ; Call for both digits
+	jsr to_hex_digit ; Call for both digits
 	xba
-	jsr _to_hex_digit
+	jsr to_hex_digit
 	sta $00,S  ; Clean stack
 	pla
 	rts
+.pend
 
 ;;;;;;;;;;;;;;;;;;;;;
 ; Drawing Functions ;
 ;;;;;;;;;;;;;;;;;;;;;
 
 ; Clears the terminal
-_term_clear
+term_clear .proc
+	php
+	MWORD
 	; Prepare terminal
 	lda #$20
 	sta TERM_BLIT_SXFILL
@@ -735,11 +886,14 @@ _term_clear
 	sta TERM_BLIT_WIDTH
 	; Store command and wait until ready
 	lda #BLITMODE_FILL
-	jsr _term_runblit
+	jsr term_runblit
+	plp
+.al
 	rts
+.pend
 	
 ; Runs a blit command with the terminal
-_term_runblit
+term_runblit .proc
 	php
 	MBYTE
 	sta TERM_BLIT_MODE
@@ -749,9 +903,12 @@ _term_runblit
 .al
 	plp
 	rts
+.pend
 	
 ; Draws the line header for the current line in the terminal
-_draw_linenum
+draw_linenum .proc
+	php
+	MWORD
 	lda #" |" ; Draw sidebar
 	sta TERM_WINDOW+4
 	
@@ -760,13 +917,13 @@ _draw_linenum
 	lda TERM_ROW
 	and #$00FF
 	clc
-	adc _var_current_line
+	adc varw_current_line
 	inc A
 	clc
 	
 	; Draw the actual number
 -	zea
-	div _const_10 ; / by 10
+	div const_10 ; / by 10
 	pha ; Save quotient
 	tda ; Get remainder
 	adc #"0"+$80 ; Convert to character
@@ -791,31 +948,35 @@ _draw_linenum
 	bne -
 	MWORD
 	
+	plp
 	rts
+.pend
 	
 .as
 ; Goes to the next line in the drawing string, returns ending character (CR, NUL)
-_drawutil_nextline
+drawutil_nextline .proc
 -	nxa
 	cmp #0
 	beq +
 	cmp #$0D
 	beq +
 	bra -
-	rts
++	rts
+.pend
 .al
 
 ; Redraws the entire screen at the current line	
-_draw_screen
+draw_screen .proc
+	php
 	; Clear the display
-	jsr _term_clear
+	jsr term_clear
 	MBYTE
 	; Find line position in string
-	ldx #_ptr_start_of_mem
-	txi
-	ldx _var_current_line
+	ldx #cptr_start_of_mem
+	txi ; I = string pointer
+	ldx varw_current_line
 	beq +
--	jsr _drawutil_nextline
+-	jsr drawutil_nextline
 	cmp #0   ; String ends unexpectedly??
 	beq +++
 	dex
@@ -824,50 +985,77 @@ _draw_screen
 	
 +	; Begin drawing string
 	stz TERM_ROW
-	rep #$20
-	jsr _draw_linenum
-	sep #$20
-	ldx #6
-
--	nxa ; Next string character
-	cmp #0
-	beq ++ ; Exit if null
-	cmp #$0D
-	beq +  ; Next line if carriage return
 	
-	sta TERM_WINDOW,X ; Store and increment
-	inx
-	cpx #80 ; Keep looping if still on screen
-	bne -
-	jsr _drawutil_nextline
-	cmp #0  ; Else, skip to next line, exit if end of string
-	beq ++
-	; Go to next line
-	
-+	; Increment row
-	lda TERM_ROW
-	inc A
-	cmp #49 ; Exit if all lines are drawn
+	; Draw line
+-	jsr draw_linenum
+	jsr draw_line
+	cmp #0 ; If line ends with null, finish drawing
 	beq +
-	sta TERM_ROW ; Draw line number
-	rep #$20
-	jsr _draw_linenum
-	sep #$20
-	ldx #6 ; Restart string loop
+	inc TERM_ROW
 	bra -
 
 +	; Draw remaining lines
 -	lda TERM_ROW
 	cmp #49
 	beq +
-	rep #$20
-	jsr _draw_linenum
-	sep #$20
+	jsr draw_linenum
 	inc TERM_ROW
 	bra -
 	
-+	MWORD
++	plp
 	rts
+.pend
+	
+; Draws the next line in I to the current memory row, returns terminating character
+draw_line .proc
+	php
+	MBYTE
+	ldx #6
+	
+-	cpx #80 ; Escape if off-screen
+	bcs ++
+	
+	nxa
+	cmp #0 ; Escape if end of string
+	beq ++
+	
+	cmp #$0D ; CR
+	beq ++ ; Escape if end of line
+	
+	cmp #$09 ; TAB
+	bne +
+	ldy #0
+	lda varb_tabsize ; Print varb_tabsize spaces of varb_tabchar
+	tay
+	lda varb_tabchar
+-	sta TERM_WINDOW,X
+	inx
+	dey
+	bne -
+	bra --
+
++	sta TERM_WINDOW,X ; Append the character
+	inx
+	bra --
+	
++	plp
+.al
+	rts
+.pend
+	
+
+draw_scrollup .proc
+	ldx varw_current_line
+	cpx #0 ; Can't scroll up if at top
+	bne +
+	rts
+	
++
+.pend
+
+draw_scrolldown .proc
+
+.pend
 
 ;;;;;;;;;;;;
 ; Commands ;
@@ -877,7 +1065,7 @@ _draw_screen
 
 ; Skips leading whitespace
 ; Returns first non-whitespace character in A, I points to address
-_cmdutil_skipspace
+cmdutil_skipspace .proc
 -	nxa
 	cmp #0
 	beq + ; Null character
@@ -890,10 +1078,11 @@ _cmdutil_skipspace
 	dex
 	txi
 +	rts
+.pend
 
 ; Parses a number, returned in 16-bit A, I points after number
-_cmdutil_parsenum
-	jsr _cmdutil_skipspace
+cmdutil_parsenum .proc
+	jsr cmdutil_skipspace
 	cmp #0 ; Return 0 if end of string
 	bne +
 	MWORD
@@ -919,7 +1108,7 @@ _cmdutil_parsenum
 	pha
 	tya
 	clc
-	mul _const_10
+	mul const_10
 	clc
 	adc $00,S
 	sta $00,S
@@ -935,30 +1124,32 @@ _cmdutil_parsenum
 	dex
 	txi
 	rts
+.pend
 
 ; "disk" | disk <n> | Sets the work disk to Redbus disk ID <n> 
-_cmd_disk
-	jsr _cmdutil_parsenum
-	sta _var_workdisk
+cmd_disk .proc
+	jsr cmdutil_parsenum
+	sta varb_workdisk
 	rts
+.pend
 
 ; "saveprefs" | saveprefs | Saves the preferences to the program disk
-_cmd_saveprefs
+cmd_saveprefs .proc
 	; Map the program disk drive
-	lda _driveaddr
+	lda driveaddr
 	mmu #MMU_MAP
 	MWORD
 	; Compute the sector address of the memory variables
-	lda #_ptr_memvars
+	lda #cptr_memvars
 	sec
 	sbc #$500
 	clc
 	zea
-	div _const_128
+	div const_128
 	sta DRIVE_SECNUM
 	; Copy to sector buffer
 	ldx #0
--	lda _ptr_memvars,X
+-	lda cptr_memvars,X
 	sta DRIVE_SECBUF,X
 	inx
 	inx
@@ -975,25 +1166,33 @@ _cmd_saveprefs
 	beq +
 	bra -
 	; Remap the terminal
-+	lda _termaddr
++	lda termaddr
 	mmu #MMU_MAP
 	
 	rts
-	
-_cmd_tabsize
-	jsr _cmdutil_parsenum
-	sta _var_tabsize
-	rep #$20
-	jsr _draw_screen
-	sep #$20
+.pend
+
+; "tabsize" | tabsize <n> | Sets the size of Tab characters in spaces	
+cmd_tabsize .proc
+	jsr cmdutil_parsenum
+	cmp #0
+	beq +
+	cmp #9 ; No ridiculous tab sizes
+	bcs +
+	sta varb_tabsize
+	ldx ptr_text_line
+	stx ptr_cursoraddr
+	jsr draw_screen
 	lda #6
 	sta TERM_CURX
-	rts
++	rts
+.pend
+
+; "diskname" | diskname <name> | Sets the name of the current work disk
+cmd_diskname .proc
+	jsr cmdutil_skipspace
 	
-_cmd_name
-	jsr _cmdutil_skipspace
-	
-	lda _var_workdisk
+	lda varb_workdisk
 	mmu #MMU_MAP
 	
 	ldx #DRIVE_SECBUF
@@ -1010,31 +1209,26 @@ _cmd_name
 	stz $00,X
 	
 	lda #DRIVECMD_WRITENAME
-	sta DRIVE_CMD
--	wai
-	lda #$FF
-	cmp DRIVE_CMD
-	beq +
-	lda DRIVE_CMD
-	beq +
-	bra -
+	jsr disk_runcmd
 	
-+	lda _termaddr
++	lda termaddr
 	mmu #MMU_MAP
 	rts
-	
-_cmd_write
-	lda _var_workdisk
+.pend
+
+; "write" | write [sec=0] | Writes the text to disk, starting at the given sector
+cmd_write .proc
+	lda varb_workdisk
 	mmu #MMU_MAP
 	
 	; Parse number and start at sector
-	jsr _cmdutil_parsenum
+	jsr cmdutil_parsenum
 	MWORD
 	sta DRIVE_SECNUM
 	MBYTE
 	
 	; I = data pointer
-	ldx #_ptr_start_of_mem
+	ldx #cptr_start_of_mem
 	txi
 	; X = byte counter
 	ldx #0
@@ -1045,11 +1239,11 @@ _cmd_write
 	cmp #0
 	beq +
 	inx
-	cpx #$80
+	cpx #128
 	bne -
 	; Write current sector
 	lda #DRIVECMD_WRITESEC
-	jsr _disk_runcmd
+	jsr disk_runcmd
 	; Prepare next sector
 	MWORD
 	inc DRIVE_SECNUM
@@ -1059,45 +1253,129 @@ _cmd_write
 	
 	; Write final sector, pad with zeros
 +	
--	cpx #$80
+-	cpx #128
 	beq +
 	inx
 	stz DRIVE_SECBUF,X
 	bra -
 
 +	lda #DRIVECMD_WRITESEC
-	jsr _disk_runcmd
+	jsr disk_runcmd
 
-	lda _termaddr
+	lda termaddr
 	mmu #MMU_MAP
 	rts
+.pend
 
-_cmd_read
+; "read" | read [sec=0] | Reads the text from disk, starting at the given sector
+cmd_read .proc
+	lda varb_workdisk
+	mmu #MMU_MAP
+	
+	; Parse number and start at sector
+	jsr cmdutil_parsenum
+	MWORD
+	sta DRIVE_SECNUM
+	MBYTE
+	
+	ldx #cptr_start_of_mem ; X = memory pointer
+	ldy #0 ; Y = sector byte counter
+	
+-	lda #DRIVECMD_READSEC
+	jsr disk_runcmd
+	
+-	lda DRIVE_SECBUF,Y
+	sta $00,X
+	beq + ; Escape if null terminator is reached
+	inx
+	iny
+	cpy #128
+	bne -
+	MWORD ; If done with current sector, read next
+	inc DRIVE_SECNUM
+	MBYTE
+	bra --
+	
++	lda termaddr
+	mmu #MMU_MAP
+	
+	; Format the terminal and load variables
+	
+	MWORD
+	; Current line is 0
+	stz varw_current_line
+
+	; Cursor & text line is at start of memory
+	lda #cptr_start_of_mem
+	sta ptr_cursoraddr
+	sta ptr_text_line
+	MBYTE
+
+	; Reset cursor
+	stz TERM_CURY
+	lda #6
+	sta TERM_CURX
+
+	; Count lines & find end of text
+	ldx #cptr_start_of_mem
+	txi
+	ldx #0
+-	nxa
+	cmp #0
+	beq +
+	cmp #$0D
+	bne -
+	inx
+	bra -
+	
++	stx varw_num_lines
+	tix
+	dex
+	stx ptr_end_of_text
+	
+	; Redraw the screen
+	jsr draw_screen
+	
 	rts
+.pend
+
+cmd_tabvis .proc
+	lda #$09
+	cmp varb_tabchar
+	beq +
+	sta varb_tabchar
+	bra ++
++	lda #' '
+	sta varb_tabchar
++	jsr draw_screen
+	rts
+.pend
 
 .al
 
 ; Command table
-_table_commands
+table_commands
 	.null "disk"
-	.word _cmd_disk
+	.word cmd_disk
 	.null "saveprefs"
-	.word _cmd_saveprefs
+	.word cmd_saveprefs
 	.null "tabsize"
-	.word _cmd_tabsize
-	.null "name"
-	.word _cmd_name
+	.word cmd_tabsize
+	.null "diskname"
+	.word cmd_diskname
 	.null "write"
-	.word _cmd_write
+	.word cmd_write
 	.null "read"
-	.word _cmd_read
+	.word cmd_read
+	.null "tabvis"
+	.word cmd_tabvis
 	.byte 0
 	
 ;;;;;;;;;;;;;;;;;;;
 ; Disk Operations ;
 ;;;;;;;;;;;;;;;;;;;
 
-_disk_runcmd
+disk_runcmd .proc
 	php
 	MBYTE
 	sta DRIVE_CMD
@@ -1111,23 +1389,26 @@ _disk_runcmd
 +	plp
 .al
 	rts
+.pend
 
 ;;;;;;;;;;;;;;;;;;;;
 ; Memory Constants ;
 ;;;;;;;;;;;;;;;;;;;;
-_const_10 .word 10
-_const_128 .word 128
+const_10 .word 10
+const_128 .word 128
 
 ;;;;;;;;;;;;;;;;;;;;
 ; Memory Variables ;
 ;;;;;;;;;;;;;;;;;;;;
 .align 128, $00
-_ptr_memvars
-_var_workdisk .byte 3
-_var_tabsize .byte 4
+cptr_memvars
+varb_workdisk .byte 3
+varb_tabsize .byte 4
+varb_tabchar .byte ' '
 	
-_ptr_start_of_mem	
-	
+.align 128, $00
+; Free memory
+cptr_start_of_mem
+
 .here
 
-.align 128, $00
