@@ -105,8 +105,8 @@ DRIVE_CMD_FAILURE = $FF
 ;;;;;;;;;;;;;
 .logical $00
 
-_driveaddr .byte ?
-_termaddr  .byte ?
+driveaddr .byte ?
+termaddr  .byte ?
 
 .here
 
