@@ -70,10 +70,10 @@ TERM_BLIT_MODE = $307
 BLITMODE_FILL = $01
 BLITMODE_INVERT = $02
 BLITMODE_SHIFT = $03
-TERM_BLIT_SXFILL = $308
-TERM_BLIT_SY = $309
-TERM_BLIT_XOFF = $30A
-TERM_BLIT_YOFF = $30B
+TERM_BLIT_SRCXFILL = $308
+TERM_BLIT_SRCY = $309
+TERM_BLIT_DSTX = $30A
+TERM_BLIT_DSTY = $30B
 TERM_BLIT_WIDTH = $30C
 TERM_BLIT_HEIGHT = $30D
 TERM_WINDOW = $310
@@ -105,6 +105,7 @@ ptr_end_of_cmd .word ?
 ptr_cursoraddr .word ?
 ptr_text_line .word ?
 varw_num_lines .word ?
+ptr_cmd_err_str .word ?
 
 text_cmdbuf .fill 81
 
@@ -556,13 +557,16 @@ input_runcmd .proc
 	cmp $00,X
 	bne -
 	
-	; Run the command, set I to command buffer pointer
+	; Run the command, set I to command buffer pointer, clear command error string
 +	MWORD
 	nxa
-	dec A
-	pha
+	sta temp0
+	stz ptr_cmd_err_str
 	MBYTE
 	txi
+	ldx #0
+	jsr (temp0,X)
+	
 	rts
 .pend
 	
@@ -822,8 +826,35 @@ inpututil_curback .proc
 	rts
 .pend
 
+; Moves the cursor to the end of the current line
 inpututil_curendofline .proc
+	ldx ptr_text_line
+	ldy #6
+	txi
+-	nxa
+	cmp #0
+	beq ++
+	cmp #$0D
+	beq ++
+	cmp #$09
+	beq +
+	iny
+	bra -
++	MWORD
+	phy
+	lda varb_tabsize
+	and #$00FF
+	clc
+	adc $00,S
+	sta $00,S
+	ply
+	MBYTE
+	bra -
 	
++	tix
+	dex
+	stx ptr_cursoraddr
+	rts
 .pend
 
 .al
@@ -869,6 +900,106 @@ to_hex_chars .proc
 	rts
 .pend
 
+; Copies Y bytes from I to X
+memcpy .proc
+	php
+	MBYTE
+-	nxa
+	sta $00,X
+	dey
+	bne -
+	plp
+	rts
+.al
+.pend
+
+; Returns the length of the string pointed to by X, length in 16-bit A
+strlen .proc
+	php
+	phx
+	txi
+	
+	MBYTE
+-	nxa
+	cmp #0
+	bne -
+	
+	MWORD
+	tix
+	txa
+	clc
+	sbc $00,S
+	sta $00,S
+	pla
+	
+	plp
+	rts
+.pend
+
+; Expands the text by A characters starting at X
+expand_text .proc
+	php
+	stx temp0
+	MWORD
+	
+	; X = Source pointer
+	; Y = Destination pointer
+	ldx ptr_end_of_text
+	phx
+	and #$00FF
+	clc
+	adc $00,S
+	sta $00,S
+	ply
+	sty ptr_end_of_text
+	
+	MBYTE
+-	lda $00,X
+	sta $00,Y
+	dey
+	dex
+	cpx temp0
+	bne -
+	
+	plx
+	plp
+	rts	
+.al
+.pend
+
+; Pops the flags from the stack, but preserves the carry bit from before the pop
+pop_flags_preserve_carry .proc
+	bcs +
+	plp
+	clc
+	rts
++	plp
+	sec
+	rts
+.pend
+
+; Compares string I and string Y, carry indicates if they are the same
+strcmp .proc
+	php
+	MBYTE
+-	nxa
+	cmp $00,Y
+	bne ++
+	cmp #0
+	beq +
+	iny
+	bra -
+	
++	plp
+	sec
+	rts
+	
++	plp
+	clc
+	rts
+.al	
+.pend
+
 ;;;;;;;;;;;;;;;;;;;;;
 ; Drawing Functions ;
 ;;;;;;;;;;;;;;;;;;;;;
@@ -879,9 +1010,9 @@ term_clear .proc
 	MWORD
 	; Prepare terminal
 	lda #$20
-	sta TERM_BLIT_SXFILL
+	sta TERM_BLIT_SRCXFILL
 	lda #$0000
-	sta TERM_BLIT_XOFF
+	sta TERM_BLIT_DSTX
 	lda #$3150
 	sta TERM_BLIT_WIDTH
 	; Store command and wait until ready
@@ -1043,16 +1174,68 @@ draw_line .proc
 	rts
 .pend
 	
-
+; Scrolls the screen up, redrawing the text area and adjusting the cursor
 draw_scrollup .proc
 	ldx varw_current_line
 	cpx #0 ; Can't scroll up if at top
 	bne +
 	rts
 	
-+
++	php
+	MBYTE
+	
+	lda TERM_CURY
+	cmp #48
+	bne +
+	; Shift cursor up if it will go off-screen
+	jsr inpututil_prevline
+	ldx ptr_text_line
+	stx ptr_cursoraddr
+	pha
+	lda #6
+	sta TERM_CURX
+	pla
+	dec TERM_CURY ; Offset to make cursor not off-screen
+	
++	; Shift cursor
+	inc TERM_CURY
+
+	; Blit unchanged text
+	stz TERM_BLIT_SRCXFILL
+	stz TERM_BLIT_SRCY
+	lda #80
+	sta TERM_BLIT_WIDTH
+	lda #48
+	sta TERM_BLIT_HEIGHT
+	stz TERM_BLIT_DSTX
+	lda #1
+	sta TERM_BLIT_DSTY
+	
+	lda BLITMODE_SHIFT
+	jsr term_runblit
+	
+	; Draw new first line
+	MWORD
+	dec varw_current_line
+	MBYTE
+	ldx cptr_start_of_mem
+	txi
+	ldx varw_current_line
+-	cpx #0
+	beq +
+	jsr drawutil_nextline
+	dex
+	bra -
+	
++	stz TERM_ROW
+	jsr draw_line
+	
+	plp
+	rts
+.al
 .pend
 
+; Scrolls the screen down, redrawing the text area and adjusting the cursor
 draw_scrolldown .proc
 
 .pend
@@ -1123,6 +1306,20 @@ cmdutil_parsenum .proc
 	tix ; Decrement I before returning
 	dex
 	txi
+	rts
+.pend
+
+; Moves the cursor back to the start of text and redraws the screen
+cmdutil_resetscreen .proc
+	stz TERM_CURY
+	lda #6
+	sta TERM_CURX
+	ldx #0
+	stx varw_current_line
+	ldx #cptr_start_of_mem
+	stx ptr_cursoraddr
+	stx ptr_text_line
+	jsr draw_screen
 	rts
 .pend
 
@@ -1298,23 +1495,6 @@ cmd_read .proc
 	
 +	lda termaddr
 	mmu #MMU_MAP
-	
-	; Format the terminal and load variables
-	
-	MWORD
-	; Current line is 0
-	stz varw_current_line
-
-	; Cursor & text line is at start of memory
-	lda #cptr_start_of_mem
-	sta ptr_cursoraddr
-	sta ptr_text_line
-	MBYTE
-
-	; Reset cursor
-	stz TERM_CURY
-	lda #6
-	sta TERM_CURX
 
 	; Count lines & find end of text
 	ldx #cptr_start_of_mem
@@ -1333,12 +1513,13 @@ cmd_read .proc
 	dex
 	stx ptr_end_of_text
 	
-	; Redraw the screen
-	jsr draw_screen
+	; Reset the screen
+	jsr cmdutil_resetscreen
 	
 	rts
 .pend
 
+; "tabvis" | tabvis | Toggles tab visibility
 cmd_tabvis .proc
 	lda #$09
 	cmp varb_tabchar
@@ -1350,6 +1531,40 @@ cmd_tabvis .proc
 +	jsr draw_screen
 	rts
 .pend
+
+; "tab2space" | tab2space | Converts all the tabs in the current text into 'tabsize' spaces
+cmd_tab2space .proc
+	ldx #cptr_start_of_mem
+-	lda $00,X
+	cmp #0
+	beq +++
+	cmp #$09
+	beq +
+	inx
+	bra -
+	
++	lda varb_tabsize
+	dec A
+	cmp #1
+	beq +
+	phx
+	jsr expand_text
+	plx
++	lda varb_tabsize
+	ldy #0
+	tay
+	lda #' '
+-	sta $00,X
+	inx
+	dey
+	bne -
+	bra --
+	
++	jsr cmdutil_resetscreen
+	rts
+.pend
+
+; "insert" | insert [sec=0] | Inserts the text read starting at the given sector at the current cursor location
 
 .al
 
@@ -1369,12 +1584,15 @@ table_commands
 	.word cmd_read
 	.null "tabvis"
 	.word cmd_tabvis
+	.null "tab2space"
+	.word cmd_tab2space
 	.byte 0
 	
 ;;;;;;;;;;;;;;;;;;;
 ; Disk Operations ;
 ;;;;;;;;;;;;;;;;;;;
 
+; Runs a disk command, carry indicates success
 disk_runcmd .proc
 	php
 	MBYTE
@@ -1382,13 +1600,160 @@ disk_runcmd .proc
 -	wai
 	lda #$FF
 	cmp DRIVE_CMD
-	beq +
+	beq ++
 	lda DRIVE_CMD
 	beq +
 	bra -
+	
 +	plp
-.al
+	sec
 	rts
+	
++	plp
+	clc
+	rts
+.al
+.pend
+
+; Runs the disk command to read the current sector from the disk
+; carry indicates success
+disk_readsector .proc
+	php
+	pha
+	MBYTE
+	lda #DRIVECMD_READSEC
+	jsr disk_runcmd
+	jsr pop_flags_preserve_carry
+	pla
+	rts
+.al
+.pend
+
+; Detects if the current disk is an MCFS formatted disk, return value in carry
+; Will set command error string if a disk error occurs
+mcfs_detect .proc
+	php
+	MWORD
+	stz DRIVE_SECNUM
+	jsr disk_readsector
+	bcs +
+	ldx #errstr_driveerr
+	stx ptr_cmd_err_str
+	rts
+	
++	lda #"MC"
+	cmp DRIVE_SECBUF+$7C
+	bne +
+	lda #"FS"
+	cmp DRIVE_SECBUF+$7E
+	bne +
+	sec
+	bra ++
+	
++	clc
+	
++	jsr pop_flags_preserve_carry
+	rts
+.al
+.pend
+
+; Computes the available space on the current disk in bytes, returned in D:A
+; Will set command error string if a disk error occurs
+mcfs_available .proc
+	php
+	MWORD
+	stz temp0
+	
+	ldx #4
+	stx DRIVE_SECNUM
+	jsr disk_readsector
+	bcc +
+	jsr _mcfs_available_iteratesec
+	
+	inc DRIVE_SECNUM
+	jsr disk_readsector
+	bcc +	
+	jsr _mcfs_available_iteratesec
+	
+	lda temp0
+	zea
+	clc
+	mul const_126
+	plp
+	rts
+	
++	ldx #errstr_driveerr
+	stx ptr_cmd_err_str
+	plp
+	rts
+	
+	
+_mcfs_available_iteratesec
+	ldx #DRIVE_SECBUF
+	txi
+	ldx #64
+	
+-	nxa
+	ldy #16
+	ora #0
+	php
+	
+-	asl A
+	bcs +
+	inc temp0
++	dey
+	bne -
+	
+	dex
+	bne --
+	
+	rts
+
+.pend
+
+; Searches the MCFS directory for a file with same name string as I
+; Returns first sector of file or 0 in Y
+mcfs_findfile .proc
+	php ; Operate on bytes
+	MBYTE
+
+	tix ; Save I
+	phx
+	
+	ldx #36
+	ldy #6
+	sty DRIVE_SECNUM
+	jsr disk_readsector
+	bcc _mcfs_findfile_fail
+	
+-	rep #$20
+	lda $00,S
+	jsr _mcfs_findfile_inspect
+	
+	bcc +
+	ply
+	plp
+	ldy $FFFC,X
+	
++	cpx #128
+	bne -
+	ldx #0
+	iny
+	cpy #16
+	bne -
+	
+	
+_mcfs_findfile_inspect
+	
+	
+_mcfs_findfile_fail
+	plx
+	ldx #errstr_driveerr
+	stx ptr_cmd_err_str
+	plp
+	rts
+
+.al
 .pend
 
 ;;;;;;;;;;;;;;;;;;;;
@@ -1396,10 +1761,18 @@ disk_runcmd .proc
 ;;;;;;;;;;;;;;;;;;;;
 const_10 .word 10
 const_128 .word 128
+const_126 .word 126
+
+errstr_invalidparam .null "Invalid parameter"
+errstr_driveerr .null "Disk drive error"
+errstr_mcfs_format .null "Non-MCFS formatted disk"
+errstr_mcfs_notfound .null "File not found"
+errstr_mcfs_outofspace .null "Out of disk space"
 
 ;;;;;;;;;;;;;;;;;;;;
 ; Memory Variables ;
 ;;;;;;;;;;;;;;;;;;;;
+
 .align 128, $00
 cptr_memvars
 varb_workdisk .byte 3
