@@ -1,3 +1,13 @@
+;;;;;;;;;;;;;;;;;
+; Options block ;
+;;;;;;;;;;;;;;;;;
+
+;; If debug functions should be enabled ;;
+DEBUG = 1
+.weak
+DEBUG = 1
+.endweak
+
 ;;;;;;;;;;;;;;;;;;;;;
 ; Predefined Header ;
 ;;;;;;;;;;;;;;;;;;;;;
@@ -148,6 +158,7 @@ _start
 	
 ; BRK is used for debugging
 _brk_start
+.if DEBUG
 	MXWORD
 	sta temp0 ; Save A to temp0
 	txa
@@ -283,6 +294,17 @@ _brk_start
 	sta TERM_WINDOW+2
 	
 	stp ; Halt the CPU
+.else
+	; Debugging not enabled, but shouldn't really return from a BRK??
+	MBYTE
+	lda termaddr
+	mmu #MMU_MAP
+	stz TERM_ROW
+	; Display '?' in top left
+	lda #"?"
+	sta TERM_WINDOW
+	stp
+.endif
 	
 _por_start
 	; Setup the MMU
@@ -1565,6 +1587,8 @@ cmd_tab2space .proc
 .pend
 
 ; "insert" | insert [sec=0] | Inserts the text read starting at the given sector at the current cursor location
+; "load" | load <filename> | Attempts to load the given file from the current MCFS disk
+; "save" | save <filename> | Attempts to save the given file to the current MCFS disk
 
 .al
 
@@ -1662,20 +1686,20 @@ mcfs_detect .proc
 mcfs_available .proc
 	php
 	MWORD
-	stz temp0
+	stz temp0 ; Clear temporary counter
 	
-	ldx #4
+	ldx #4 ; Count SAM in sector 4
 	stx DRIVE_SECNUM
 	jsr disk_readsector
 	bcc +
 	jsr _mcfs_available_iteratesec
 	
-	inc DRIVE_SECNUM
+	inc DRIVE_SECNUM ; Count SAM in sector 5
 	jsr disk_readsector
 	bcc +	
 	jsr _mcfs_available_iteratesec
 	
-	lda temp0
+	lda temp0 ; Multiply by 126 to get byte count
 	zea
 	clc
 	mul const_126
@@ -1687,72 +1711,96 @@ mcfs_available .proc
 	plp
 	rts
 	
-	
 _mcfs_available_iteratesec
-	ldx #DRIVE_SECBUF
+	ldx #DRIVE_SECBUF ; I = Sector buffer
 	txi
-	ldx #64
+	ldx #64 ; X = Word counter
 	
--	nxa
-	ldy #16
-	ora #0
-	php
-	
--	asl A
-	bcs +
-	inc temp0
-+	dey
-	bne -
-	
-	dex
-	bne --
-	
+-	dex ; Count words
+	bne +
 	rts
+
++	nxa ; Next SAM word
+-	cmp #$FFFF ; If no more sectors are available, read next SAM word
+	beq --
+	sec ; Shift in a 1 (unavailable), shift out SAM bit
+	rol
+	bcs - ; Increment sector count if SAM bit is 0 (available)
+	inc temp0
+	bra -
 
 .pend
 
 ; Searches the MCFS directory for a file with same name string as I
-; Returns first sector of file or 0 in Y
+; Returns first sector of file in Y
+; Will set command error string if a disk error occurs or the file is not found
 mcfs_findfile .proc
 	php ; Operate on bytes
 	MBYTE
-
-	tix ; Save I
 	phx
 	
-	ldx #36
-	ldy #6
+	ldy #6 ; Setup sector number
 	sty DRIVE_SECNUM
-	jsr disk_readsector
-	bcc _mcfs_findfile_fail
 	
--	rep #$20
-	lda $00,S
-	jsr _mcfs_findfile_inspect
+-	ldx #36 ; Setup sector byte offset
 	
-	bcc +
-	ply
-	plp
-	ldy $FFFC,X
-	
-+	cpx #128
-	bne -
-	ldx #0
-	iny
-	cpy #16
-	bne -
-	
-	
-_mcfs_findfile_inspect
-	
-	
-_mcfs_findfile_fail
+	cpy #16 ; If we hit sector 16, the file wasn't found
+	bne +
+	ldx #errstr_mcfs_notfound
+	stx ptr_cmd_err_str
 	plx
+	plp
+	rts
+	
++	jsr disk_readsector ; Attempt read
+	bcs +
 	ldx #errstr_driveerr
 	stx ptr_cmd_err_str
+	plx
 	plp
 	rts
 
++	
+-	jsr _mcfs_findfile_inspect ; Test file name at offset X against string I
+	bcc +
+	ldy -4,X
+	plx
+	plp
+	rts
+	
++	MWORD ; Next directory entry
+	txa
+	clc
+	adc #32
+	cmp #128
+	tax
+	MBYTE
+	bcc -
+	
+	iny
+	sty DRIVE_SECNUM
+	bra --
+	
+_mcfs_findfile_inspect
+	phy ; Save Y to stack
+	txy ; Save X to Y
+	tix ; Save I to X
+	
+-	nxa ; Compare loop
+	cmp $00,X
+	bne +
+	cmp #0
+	bne -
+	
+	tyx ; Strings identical
+	ply
+	sec
+	rts
+	
++	tyx ; Character mismatch
+	ply
+	clc
+	rts
 .al
 .pend
 
@@ -1768,6 +1816,8 @@ errstr_driveerr .null "Disk drive error"
 errstr_mcfs_format .null "Non-MCFS formatted disk"
 errstr_mcfs_notfound .null "File not found"
 errstr_mcfs_outofspace .null "Out of disk space"
+
+data_mcfs_boot
 
 ;;;;;;;;;;;;;;;;;;;;
 ; Memory Variables ;
