@@ -1804,6 +1804,20 @@ _mcfs_findfile_inspect
 .al
 .pend
 
+; Reads a file named I to the memory at X
+mcfs_readfile .proc
+
+.pend
+
+; Writes the text at I to the file named X
+; Will set command error string if a disk error occurs or the file is not found
+mcfs_writefile .proc
+
+; Acquire a new sector from the SAM
+_mcfs_writefile_getsec
+
+.pend
+
 ;;;;;;;;;;;;;;;;;;;;
 ; Memory Constants ;
 ;;;;;;;;;;;;;;;;;;;;

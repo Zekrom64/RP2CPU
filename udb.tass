@@ -1,0 +1,209 @@
+;;;;;;;;;;;;;;;;;
+; Options block ;
+;;;;;;;;;;;;;;;;;
+
+;; If debug functions should be enabled ;;
+DEBUG = 1
+.weak
+DEBUG = 1
+.endweak
+
+;;;;;;;;;;;;;;;;;;;;;
+; Predefined Header ;
+;;;;;;;;;;;;;;;;;;;;;
+
+*= 0
+
+MBYTE .macro
+	sep #$20
+	.as
+.endm
+
+MWORD .macro
+	rep #$20
+	.al
+.endm
+
+XBYTE .macro
+	sep #$10
+	.xs
+.endm
+
+XWORD .macro
+	rep #$10
+	.xl
+.endm
+
+MXBYTE .macro
+	sep #$30
+	.as
+	.xs
+.endm
+
+MXWORD .macro
+	rep #$30
+	.al
+	.xl
+.endm
+
+MMU_MAP = $00
+MMU_GET_MAP = $80
+MMU_SET_RB_OUT_OFFSET = $01
+MMU_GET_RB_OUT_OFFSET = $81
+MMU_RB_ENABLE = $02
+MMU_RB_DISABLE = $82
+MMU_SET_RB_IN_OFFSET = $03
+MMU_GET_RB_IN_OFFSET = $83
+MMU_RB_IN_ENABLE = $04
+MMU_RB_IN_DISABLE = $84
+MMU_SET_BRK = $05
+MMU_GET_BRK = $85
+MMU_SET_POR = $06
+MMU_GET_POR = $86
+
+;;;;;;;;;;;;;;;;;;;
+; Macro Constants ;
+;;;;;;;;;;;;;;;;;;;
+REDBUS_WINDOW = $300
+
+TERM_ROW = $300
+TERM_CURX = $301
+TERM_CURY = $302
+TERM_CURMODE = $303
+CURMODE_HIDE = $00
+CURMODE_SOLID = $01
+CURMODE_BLINK = $02
+TERM_KB_START = $304
+TERM_KB_POS = $305
+TERM_KB_KEY = $306
+TERM_BLIT_MODE = $307
+BLITMODE_FILL = $01
+BLITMODE_INVERT = $02
+BLITMODE_SHIFT = $03
+TERM_BLIT_SRCXFILL = $308
+TERM_BLIT_SRCY = $309
+TERM_BLIT_DSTX = $30A
+TERM_BLIT_DSTY = $30B
+TERM_BLIT_WIDTH = $30C
+TERM_BLIT_HEIGHT = $30D
+TERM_WINDOW = $310
+
+DRIVE_SECBUF = $300
+DRIVE_SECNUM = $380
+DRIVE_CMD = $382
+DRIVECMD_READNAME = $01
+DRIVECMD_WRITENAME = $02
+DRIVECMD_READSERIAL = $03
+DRIVECMD_READSEC = $04
+DRIVECMD_WRITESEC = $05
+
+;;;;;;;;;;;;;
+; Zero Page ;
+;;;;;;;;;;;;;
+.logical $00
+
+driveaddr .byte ?
+termaddr  .byte ?
+
+.here
+
+*= $0
+
+.logical $500
+;;;;;;;;;;;;;;;
+; Entry point ;
+;;;;;;;;;;;;;;;
+_start
+	; Enter native mode
+	clc
+	xce
+	
+	; Set POR
+	MXWORD
+	lda #_start
+	mmu #MMU_SET_POR
+	
+;;;;;;;;;;;;;;;;;;;;;
+; Utility Functions ;
+;;;;;;;;;;;;;;;;;;;;;
+
+; Sets Y bytes at X to the byte in A
+memset .proc
+	php
+	MBYTE
+	phx
+	phy
+	
+-	sta $00,X
+	inx
+	dey
+	bne -
+	
+	ply
+	plx
+	plp
+	rts
+.pend
+
+; Copies Y bytes at I to X
+; I is advanced by Y
+memcpy .proc
+	pha
+	php
+	MBYTE
+	phy
+	phx
+	
+-	nxa
+	sta $00,X
+	inx
+	dey
+	bne -
+
+	plx
+	ply
+	plp
+	pla
+	rts
+.pend
+
+; Copies the string at I to X
+; I is advanced by the string length
+strcpy .proc
+	pha
+	php
+	MBYTE
+	phx
+	
+-	nxa
+	sta $00,X
+	inx
+	ora #0
+	bne -
+	
+	plx
+	plp
+	pla
+	rts
+.pend
+
+; Counts the length of the string at I, returns length in X
+; I is advanced by the string length
+strlen .proc
+	pha
+	php
+	MBYTE
+	ldx #0
+	
+-	nxa
+	ora #0
+	bne -
+	
+	plp
+	pla
+	rts
+.pend
+
+
+
+.here
