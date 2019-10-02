@@ -1,0 +1,2532 @@
+;;;;;;;;;;;;;;;;;;;;;
+; Predefined Header ;
+;;;;;;;;;;;;;;;;;;;;;
+
+*= 0
+
+MBYTE .macro
+	sep #$20
+	.as
+.endm
+
+MWORD .macro
+	rep #$20
+	.al
+.endm
+
+XBYTE .macro
+	sep #$10
+	.xs
+.endm
+
+XWORD .macro
+	rep #$10
+	.xl
+.endm
+
+MXBYTE .macro
+	sep #$30
+	.as
+	.xs
+.endm
+
+MXWORD .macro
+	rep #$30
+	.al
+	.xl
+.endm
+
+MXAUTO .macro
+	.autsiz
+.endm
+
+.edef "\r", 13
+.edef "\t", 9
+.edef "\b", 8
+.edef "\n", 10
+.edef "\q", 34
+
+; MMU Operations
+MMU_MAP = $00
+MMU_GET_DEVICE = $80
+MMU_SET_RB_OUT_OFFSET = $01
+MMU_GET_RB_OUT_OFFSET = $81
+MMU_RB_ENABLE = $02
+MMU_RB_DISABLE = $82
+MMU_SET_RB_IN_OFFSET = $03
+MMU_GET_RB_IN_OFFSET = $83
+MMU_RB_IN_ENABLE = $04
+MMU_RB_IN_DISABLE = $84
+MMU_SET_BRK = $05
+MMU_GET_BRK = $85
+MMU_SET_POR = $06
+MMU_GET_POR = $86
+
+; Default redbus window offset
+RB_WINDOW = $300
+
+; Terminal fields
+TERM_MEMROW = $00
+TERM_CURX = $01
+TERM_CURY = $02
+TERM_CURMODE = $03
+CURMODE_HIDE = 0
+CURMODE_SOLID = 1
+CURMODE_BLINK = 2
+TERM_KB_START = $04
+TERM_KB_POS = $05
+TERM_KB_KEY = $06
+TERM_BLITMODE = $07
+BLITMODE_FILL = $1
+BLITMODE_INVERT = $2
+BLITMODE_SHIFT = $3
+TERM_BLIT_SRCX = $08
+TERM_BLIT_FILLVAL = $08
+TERM_BLIT_SRCY = $09
+TERM_BLIT_DSTX = $0A
+TERM_BLIT_DSTY = $0B
+TERM_BLIT_WIDTH = $0C
+TERM_BLIT_HEIGHT = $0D
+TERM_WINDOW = $10
+
+; IO Expander fields
+IOX_INPUT = $00
+IOX_OUTPUT = $02
+
+; Disk drive fields
+DRIVE_BUFFER = $00
+DRIVE_SECTOR = $80
+DRIVE_CMD = $82
+
+DRIVE_CMD_IDLE = 0
+DRIVE_CMD_READNAME = 1
+DRIVE_CMD_WRITENAME = 2
+DRIVE_CMD_READSERIAL = 3
+DRIVE_CMD_READSECTOR = 4
+DRIVE_CMD_WRITESECTOR = 5
+DRIVE_CMD_FAILURE = $FF
+
+;;;;;;;;;;;;;
+; Zero Page ;
+;;;;;;;;;;;;;
+.logical $00
+
+driveaddr .byte ?
+termaddr  .byte ?
+
+mcdos_pointer .word ?
+
+.here
+
+*= $0
+
+.logical $500
+;;;;;;;;;;;;;;;
+; Entry point ;
+;;;;;;;;;;;;;;;
+_start .proc
+	; Basic state setup
+	clc
+	xce
+	MXAUTO
+	rep #$30
+	
+	; Load stack register values
+	ldx #$0300
+	txr
+	ldx #$0200
+	txs
+	
+	; Setup MMU
+	lda #$0300
+	mmu #MMU_SET_RB_OUT_OFFSET
+	mmu #MMU_RB_ENABLE
+	
+	; Detect available memory
+	ldx #$1FFE
+	
+-	lda #$DEAD
+	sta $00,X
+	cmp $00,X
+	bne ++
+	cpx #$FFFE
+	beq +
+	txa
+	clc
+	adc #$2000
+	tax
+	bra -
+	
++	txa
+	bra ++
++	txa
+	sec
+	sbc #$2000
+	
++	inc A
+	inc A
+	
+	; Disable relocations if TAB is entered on startup
+	pha
+	sep #$20
+	lda RB_WINDOW+TERM_KB_START
+	cmp RB_WINDOW+TERM_KB_POS
+	beq +
+	lda #'\t'
+	cmp RB_WINDOW+TERM_KB_KEY
+	bne +
+	
+-	inc RB_WINDOW+TERM_KB_START
+	lda RB_WINDOW+TERM_KB_START
+	cmp RB_WINDOW+TERM_KB_POS
+	bne -
+	rep #$20
+	
+	lda #mcdos_table
+	sta mcdos_pointer
+	tax
+	
+	pla
+	dec A
+	sta mcdos_table+MCDOS_AVAILABLE_MEM
+	
+	rer _start_debugstr
+	rli
+	jsr (MCDOS_PRINTSTR,X)
+	jsr (MCDOS_PAUSE,X)
+	
+	bra _start_complete
+	
+_start_debugstr .null "Starting debug mode, press key to continue...\r"
+	
+	; Relocate MCDOS to top of memory
++	rep #$20
+	pla
+	sec
+	sbc #(mcdos_end-mcdos_start)
+	tay
+	phy
+	
+	ldx #mcdos_start
+	txi
+	ldx #(mcdos_end-mcdos_start)
+	
+	sep #$20
+	
+-	nxa
+	sta $00,Y
+	iny
+	dex
+	bne -
+	
+	rep #$20
+	
+	plx
+	stx mcdos_pointer
+	
+	; Apply relocations to pointer table
+	
+	txa
+	sec
+	sbc #mcdos_start
+	ldy #((mcdos_table_end-mcdos_table)/2)
+	
+-	pha
+	lda $00,X
+	cmp #mcdos_start
+	bcs +
+	pla
+	bra ++
++	clc
+	adc $00,S
+	sta $00,X
+	pla
++	inx
+	inx
+	dey
+	bne -
+	
+	; Assign highest memory address
+	
+	ldx mcdos_pointer
+	txa
+	dec A
+	sta $00,X
+	
+_start_complete
+	
+	; Jump to shell
+
+	jsr ($14,X)
+.pend
+
+;;;;;;;;;;;;;;;;;;;;;;;
+; Start of MCDOS code ;
+;;;;;;;;;;;;;;;;;;;;;;;
+mcdos_start
+
+; How to access MCDOS utilities:
+;
+;    Load 16-bit MCDOS table pointer from $02 into X
+;        Table is located in high memory
+;        MCDOS reloads the pointer before a program is run
+;
+;    Access variables with LDr/STr Abs/Zero-Page, X/Y
+;        Absolute offset is constant offset into table
+;        Variables are either words or pointers
+;
+;    Call functions with JSR (Abs,X)
+;        X (the MCDOS table pointer) is preserved
+;        Processor flags are preserved (unless otherwise specified)
+;        Arguments in registers may be modified
+;        If a function uses an IO device, it is assumed already mapped at $300
+;
+;     Some commands are stored in the table to make them
+;        easier to locate by MCDOS, they can be called but
+;        make no guarantees about register preservation 
+
+;;;;;;;;;;;;;;;;;
+; Utility Table ;
+;;;;;;;;;;;;;;;;;
+
+; void*    | Highest free memory address, may change on certain MCDOS calls
+MCDOS_AVAILABLE_MEM =  $0000
+; func     | Prints the string pointed to by I to the screen
+MCDOS_PRINTSTR =       $0002
+; char*    | Pointer to a 256-byte scratch-memory buffer
+MCDOS_SCRATCHBUF =     $0004
+; func     | Converts the number in A to a string, stored at memory at Y, radix is D (default to 10 if D=0, ie. zea -> radix=10)
+MCDOS_UITOA =          $0006
+; func     | Reads the next key from the current terminal, returned in A, blocks until a key is read
+MCDOS_NEXTKEY =        $0008
+; func     | Prints the character in the lower 8-bits of A to the terminal
+MCDOS_PRINTCHAR =      $000A
+; func     | Scrolls the screen by one line
+MCDOS_SCROLL =         $000C
+; func     | Reads a null-terminated string up to A characters, stored at Y, until a carriage return is entered
+MCDOS_READLINE =       $000E
+; func     | Clears the screen and resets the cursor to (0,0)
+MCDOS_CLEARSCR =       $0010
+; word     | Current working drive ID
+MCDOS_CURDRIVE =       $0012
+; func     | Soft-restarts to the MCDOS shell, executed on POR and BRK
+MCDOS_SHELL =          $0014
+; char*    | Pointer to command line argument string, may be null
+MCDOS_ARGS =           $0016
+; func     | Iterates the string at Y until the character in A is found, or the end of string is reached
+;            If found, it is replaced with a null, and Y points to the character after it, carry is set
+;            If not found, carry is clear
+MCDOS_STRSPLIT =      $0018
+; func     | Moves the cursor back by one
+MCDOS_BACKSPACE =     $001A
+; func     | Pauses execution until a key is pressed
+;            For debug emulation, return address is stored in I, flags are displayed
+MCDOS_PAUSE =         $001C
+; func     | Executes the command with name stored at Y, and arguments stored in MCDOS_ARGS
+;            This will overwrite any program currently loaded, if it wants to persist use MCDOS_MAKE_RESIDENT
+MCDOS_EXECUTE =       $001E
+; func     | Executes the string in Y as a sequence of commands
+MCDOS_INTERPRET =     $0020
+; func     | Makes A bytes of memory at I resident in memory, sets execution return point at offset Y into memory
+;            When MCDOS_EXECUTE or MCDOS_INTERPRET returns, it will attempt to execute the most recent resident
+;                memory. When resident code returns, MCDOS will attempt to execute any next-most-recent resident
+;                code, otherwise it will return to the shell.
+MCDOS_MAKE_RESIDENT = $0022
+; cmd      | Prints the argument string
+MCDOS_CMD_ECHO =      $0024
+; char*    | Stores a table of mounted drives, each bit stores the state for a drive
+MCDOS_MOUNT_TABLE =   $0026
+; func     | Converts the numeric string in I to an unsigned integer returned in A, with radix D. Like UITOA, if
+;               D=0, the radix is set to 10 (zea = radix 10). I points to the character after the integer string.
+MCDOS_UATOI =         $0028
+; cmd      | Sets the current drive number to the number parsed from the argument string
+MCDOS_CMD_CD =        $002A
+; func     | Converts the string stored at Y to upper case
+MCDOS_TOUPPER =       $002C
+; func     | Converts the string stored at Y to lower case
+MCDOS_TOLOWER =       $002E
+; func     | Prints the formatted text at I to the current terminal, supports all the integer-based
+;               specifier characters from the C-style 'printf'. Arguments are pushed
+;               to the R-stack last-to-first
+MCDOS_PRINTF =        $0030
+; func     | Identical to MCDOS_UATOI, but uses signed values
+MCDOS_ATOI =          $0032
+; func     | Identical to MCDOS_UITOA, but uses signed values
+MCDOS_ITOA =          $0034
+; func     | Stores the number of characters in string I to A
+MCDOS_STRLEN =        $0036
+; func     | Skips the initial whitespace characters in string I
+MCDOS_SKIPWHITE =     $0038
+; cmd      | Calls MCDOS_FORMAT, will prompt if the user is sure unless the 'y' argument is passed
+MCDOS_CMD_FORMAT =    $003A
+; func     | Formats the current disk with an MCFS file system
+MCDOS_FORMAT =        $003C
+; func     | Writes A bytes starting at I to disk sector starting at Y.
+MCDOS_DISKWRITE =     $003E
+; func     | Sets Y bytes at I to the 8-bit value in a
+MCDOS_MEMSET =        $0040
+; func     | Executes the disk command in A, will execute a BRK on error or timeout
+MCDOS_DISKCMD =       $0042
+; cmd      | Renames the current disk to the following string
+MCDOS_CMD_RENAME =    $0044
+; cmd      | Writes the third argument to the IO expander at the first argument
+MCDOS_CMD_IOWRITE =   $0046
+; cmd      | Reads the value from the IO expander at the first argument and pushes it
+MCDOS_CMD_IOREAD =    $0048
+; cmd      | Sleeps for the argument number of ticks
+MCDOS_CMD_SLEEP =     $004A
+; word*    | Pointer to a 128-word value stack
+MCDOS_VALSTACK =      $004C
+; word     | Pointer offset to the top of the value stack, grows upwards
+MCDOS_VALPTR =        $004E
+; func     | Pushes the 16-bit value in A to the value stack
+MCDOS_PUSH =          $0050
+; func     | Pops the value stack into the 16-bit A register
+MCDOS_POP =           $0052
+; word     | The current terminal redbus ID
+MCDOS_CURTERM =       $0054
+; word     | The current flags for the operating system
+MCDOS_FLAGS =         $0056
+MCDOS_FLAG_CONDITION = $1 ; The current script condition
+MCDOS_FLAG_DEBUG = $2     ; If MCDOS is in debug mode
+; func     | Evaluates the expression at I, returning the result in A
+MCDOS_EVAL =          $0058
+; cmd      | Evaluates the argument string, pushing the result
+MCDOS_CMD_EVAL =      $005A
+; func     | Parses the numeric argument at I, returning the result in A
+MCDOS_PARSENARG =     $005C
+; cmd      | Sets the condition code if the evaluated argument string is non-zero
+MCDOS_CMD_TEST =      $005E
+; cmd      | Executes the following statement if the condition is true
+MCDOS_CMD_PLUS =      $0060
+; cmd      | Executes the following statement if the condition is false
+MCDOS_CMD_MINUS =     $0062
+; func     | Replaces every character in string Y equal to the upper 8 bits of A (or B) with the lower 8 bits of A
+MCDOS_REPLACE =       $0064
+; cmd      | Lists the files in the current disk
+MCDOS_CMD_LS =        $0066
+; func     | Copies A bytes at I to Y
+MCDOS_MEMCPY =        $0068
+; func     | Copies the string at I to Y
+MCDOS_STRCPY =        $006A
+; func     | Sets the carry flag if the current disk is an MCFS volume
+MCDOS_MCFS_DETECT =   $006C
+; func     | Gets information for the MCFS file at index A:
+;               Carry indicates if it exists
+;               I points to the file name in the disk sector buffer
+;               A stores the size of the file
+;               Y stores the first sector of the file
+MCDOS_MCFS_FILEINFO = $006E
+; func     | Resets the shell state
+MCDOS_SHELL_RESET =   $0070
+; func     | Gets information for the MCFS formatted disk
+;               Carry indicates if disk is MCFS formatted
+;               A stores the number of sectors in use
+;               I points to the volume name in the disk sector buffer
+MCDOS_MCFS_DISKINFO = $0072
+; func     | Reads a block of data from the sector in Y. A returns the
+;               number of bytes read and Y contains the next sector to
+;               read. Carry indicates if the end of file is reached. The
+;               read data is stored in the disk buffer at offset 2. I
+;               is loaded with the read data address
+MCDOS_MCFS_READ =     $0074
+; func     | Locates a file on disk by the name pointed to in I. The
+;               disk drive it is stored on is mapped to Redbus and the
+;               file index is stored in A. Carry indicates if the file
+;               was found. This overwrites the current mapped device.
+MCDOS_MCFS_FIND =     $0076
+; func     | Locates a file on the current disk by the name pointed to
+;               in I. The file index is stored in A, carry indicates if
+;               the file was found.
+MCDOS_MCFS_FINDHERE = $0078
+; func     | Compares the strings in I and Y, carry indicates if they are equal.
+MCDOS_STRCMP =        $007A
+; cmd      | Prints the contents of the given file in arguments
+MCDOS_CMD_CAT =       $007C
+; cmd      | Prints the values on the stack
+MCDOS_CMD_STACK =     $007E
+; func     | Gets the address of the value at stack index A, address returned in Y
+MCDOS_STACK_INDEX =   $0080
+
+; Resident memory structure
+MCDOSResidentMemory .struct
+	loadaddr .word 0 ; The address memory should be loaded to
+	memsize .word 0  ; The size of the memory to load
+	retaddr .word 0  ; The absolute address to jump to on return
+	; Resident memory follows header
+.ends
+
+mcdos_table
+	.word 0
+	.word mcdos_func_printstr
+	.word mcdos_var_scratchbuf
+	.word mcdos_func_uitoa
+	.word mcdos_func_nextkey
+	.word mcdos_func_printchar
+	.word mcdos_func_scroll
+	.word mcdos_func_readline
+	.word mcdos_func_clearscr
+	.word 2
+	.word mcdos_func_shell
+	.word 0
+	.word mcdos_func_strsplit
+	.word mcdos_func_backspace
+	.word mcdos_func_pause
+	.word mcdos_func_execute
+	.word mcdos_func_interpret
+	.word mcdos_func_make_resident
+	.word mcdos_func_cmd_echo
+	.word mcdos_var_mounttbl
+	.word mcdos_func_uatoi
+	.word mcdos_func_cmd_cd
+	.word mcdos_func_toupper
+	.word mcdos_func_tolower
+	.word mcdos_func_printf
+	.word mcdos_func_atoi
+	.word mcdos_func_itoa
+	.word mcdos_func_strlen
+	.word mcdos_func_skipwhite
+	.word mcdos_func_cmd_format
+	.word mcdos_func_format
+	.word mcdos_func_diskwrite
+	.word mcdos_func_memset
+	.word mcdos_func_diskcmd
+	.word mcdos_func_cmd_rename
+	.word mcdos_func_cmd_iowrite
+	.word mcdos_func_cmd_ioread
+	.word mcdos_func_cmd_sleep
+	.word mcdos_var_valstack
+	.word 0
+	.word mcdos_func_push
+	.word mcdos_func_pop
+	.word 1
+	.word 0
+	.word mcdos_func_eval
+	.word mcdos_func_cmd_eval
+	.word mcdos_func_parsenarg
+	.word mcdos_func_cmd_test
+	.word mcdos_func_cmd_plus
+	.word mcdos_func_cmd_minus
+	.word mcdos_func_replace
+	.word mcdos_func_cmd_ls
+	.word mcdos_func_memcpy
+	.word mcdos_func_strcpy
+	.word mcdos_func_mcfs_detect
+	.word mcdos_func_mcfs_fileinfo
+	.word mcdos_func_shell_reset
+	.word mcdos_func_mcfs_diskinfo
+	.word mcdos_func_mcfs_read
+	.word mcdos_func_mcfs_find
+	.word mcdos_func_mcfs_findhere
+	.word mcdos_func_strcmp
+	.word mcdos_func_cmd_cat
+	.word mcdos_func_cmd_stack
+	.word mcdos_func_stack_index
+mcdos_table_end
+
+;;;;;;;;;;
+; Memory ;
+;;;;;;;;;;
+	
+mcdos_var_scratchbuf .fill 256
+mcdos_var_mounttbl .fill 8
+mcdos_var_valstack .fill 256
+	
+;;;;;;;;;;;;;
+; Functions ;
+;;;;;;;;;;;;;
+
+mcdos_func_shell .proc
+	clc
+	rep #$40
+
+_mcdos_shell_loop
+	bcs _mcdos_shell_run
+	
+	; Cleanup state, reset flags and stack pointers
+	rep #$30
+	ldx #$200
+	txs
+	ldx #$300
+	txr
+	
+	php
+	; Just in case the MCDOS pointer was overwritten, recompute based on current address
+	rer _mcdos_shell_anchor
+_mcdos_shell_anchor
+	rla
+	sec
+	sbc #(_mcdos_shell_anchor-mcdos_table)
+	tax
+	stx mcdos_pointer
+	plp
+	
+	; Reset shell state
+	jsr (MCDOS_SHELL_RESET,X)
+	
+	; Setup MMU
+	lda MCDOS_SHELL,X
+	mmu #MMU_SET_POR
+	
+	rer _mcdos_shell_brk
+	rla
+	mmu #MMU_SET_BRK
+	
+	bvs +
+	
+	; Clear screen
+	jsr (MCDOS_CLEARSCR,X)
+
+	; Print header
+	rer mcdos_str_mcdosheader
+	rli
+	
+	lda MCDOS_AVAILABLE_MEM,X
+	sec
+	sbc #$500
+	rha
+	
+	jsr (MCDOS_PRINTF,X)
+	
+	bra ++
+	
++	rhi
+	rla
+	dec A
+	rha
+	rer mcdos_str_hitbrk
+	rli
+	jsr (MCDOS_PRINTF,X)
+	
++	lda #'\r'
+	jsr (MCDOS_PRINTCHAR,X)
+	bra _mcdos_shell_run
+	
+-	bra _mcdos_shell_loop
+	
+_mcdos_shell_run
+	; Print command line
+	lda #'\r'
+	jsr (MCDOS_PRINTCHAR,X)
+	
+	lda MCDOS_CURDRIVE,X
+	rha
+	
+	rer mcdos_str_cmdline
+	rli
+	jsr (MCDOS_PRINTF,X)
+	
+	; Read command
+	lda #255
+	ldy MCDOS_SCRATCHBUF,X
+	rhy
+	jsr (MCDOS_READLINE,X)
+	
+	lda #"\r\t"
+	rly
+	rhy
+	jsr (MCDOS_REPLACE,X)
+	
+	lda #'\r'
+	jsr (MCDOS_PRINTCHAR,X)
+	
+	rly
+	jsr (MCDOS_INTERPRET,X)
+	
+	sec
+	bra -
+	
+_mcdos_shell_brk
+	plp
+	rep #$30
+	plx
+	txi
+	clc
+	sep #$40
+	bra -
+	
+.pend
+
+; Located after code because of RER address calculation bug
+
+mcdos_str_mcdosheader .null "MCDOS v0.1\r%u bytes free\r"
+mcdos_str_cmdline .null "%u> "
+mcdos_str_hitbrk .null "Program exited with BRK @$%X!\r"
+
+mcdos_func_shell_reset .proc
+	php
+	rep #20
+	
+	; Clear value stack
+	stz MCDOS_VALPTR,X
+	
+	; Reset flags to default state
+	
+	lda #MCDOS_FLAGS ; Compute absolute address of flag bits
+	phx
+	clc
+	adc $0,S
+	rer _mcdos_shell_reset_rstf
+	rlx
+	sta $00,X ; Modify address of TRB
+	rer _mcdos_shell_reset_setf
+	rlx
+	sta $00,X ; Modify address of TSB
+	plx
+	
+	lda #MCDOS_FLAG_CONDITION ; Flags to reset
+	
+	.byte $1C ; TRB Abs
+_mcdos_shell_reset_rstf
+	.word 0   ; Flags to reset
+	
+	lda #0 ; Flags to set
+	
+	.byte $0C
+_mcdos_shell_reset_setf
+	.word 0   ; Flags to set
+	
+	; Reload drive and terminal from zero page
+	lda $00
+	sep #$20
+	tay
+	sty MCDOS_CURDRIVE,X
+	xba
+	tay
+	sty MCDOS_CURTERM,X
+	rep #$20
+	
+	plp
+	rts
+.pend
+	
+mcdos_func_printstr .proc
+	pha
+	php
+	sep #$20
+	
+-	nxa
+	cmp #0
+	beq +
+	jsr (MCDOS_PRINTCHAR,X)
+	bra -
+
+	.al
++	plp
+	pla
+	rts
+.pend
+	
+mcdos_func_printchar .proc
+	phy
+	php
+	sep #$20
+	
+	phx
+	sep #$10
+	ldy RB_WINDOW+TERM_CURY
+	sty RB_WINDOW+TERM_MEMROW
+	ldy RB_WINDOW+TERM_CURX
+	rep #$10
+	plx
+	
+	; Carriage return
+	cmp #$0D
+	bne ++
+-	stz RB_WINDOW+TERM_CURX
+	lda RB_WINDOW+TERM_CURY
+	cmp #49
+	bne +
+	rep #$10
+	jsr (MCDOS_SCROLL,X)
+	bra _printchar_exit
+	
++	inc A
+	sta RB_WINDOW+TERM_CURY
+	bra _printchar_exit
+	
+	; Regular character
++	sta RB_WINDOW+TERM_WINDOW,Y
+	inc RB_WINDOW+TERM_CURX
+	lda RB_WINDOW+TERM_CURX
+	cmp #80
+	bne _printchar_exit
+	bra -
+	
+_printchar_exit
+	plp
+	ply
+	rts
+.pend
+	
+mcdos_func_scroll .proc
+	pha
+	phx
+	php
+	sep #$20
+	
+	; Setup blit
+	stz RB_WINDOW+TERM_BLIT_DSTX
+	stz RB_WINDOW+TERM_BLIT_DSTY
+	stz RB_WINDOW+TERM_BLIT_SRCX
+	lda #1
+	sta RB_WINDOW+TERM_BLIT_SRCY
+	lda #49
+	sta RB_WINDOW+TERM_BLIT_HEIGHT
+	lda #80
+	sta RB_WINDOW+TERM_BLIT_WIDTH
+	
+	; Perform shift
+	lda #BLITMODE_SHIFT
+	sta RB_WINDOW+TERM_BLITMODE
+	
+-	wai
+	cmp RB_WINDOW+TERM_BLITMODE
+	beq -
+	
+	; Clear bottom line
+	lda #49
+	sta RB_WINDOW+TERM_BLIT_DSTY
+	
+	ldx #79
+	lda #' '
+-	sta RB_WINDOW+TERM_WINDOW,X
+	dex
+	bpl -
+	
+	plp
+	plx
+	pla
+	rts
+.pend
+
+mcdos_func_nextkey .proc
+	php
+	sep #$20
+	
+-	lda RB_WINDOW+TERM_KB_POS
+	cmp RB_WINDOW+TERM_KB_START
+	bne +
+	wai
+	bra -
+	
++	lda RB_WINDOW+TERM_KB_KEY
+	inc RB_WINDOW+TERM_KB_START
+	
+	plp
+	rts
+.pend
+	
+mcdos_func_clearscr .proc
+	php
+	sep #$20
+	
+	stz RB_WINDOW+TERM_BLIT_DSTX
+	stz RB_WINDOW+TERM_BLIT_DSTY
+	lda #50
+	sta RB_WINDOW+TERM_BLIT_HEIGHT
+	lda #80
+	sta RB_WINDOW+TERM_BLIT_WIDTH
+	lda #' '
+	sta RB_WINDOW+TERM_BLIT_FILLVAL
+	
+	lda #BLITMODE_FILL
+	sta RB_WINDOW+TERM_BLITMODE
+-	wai
+	cmp RB_WINDOW+TERM_BLITMODE
+	beq -
+	
+	stz RB_WINDOW+TERM_CURX
+	stz RB_WINDOW+TERM_CURY
+	
+	plp
+	rts
+.pend
+
+mcdos_func_uitoa .proc
+	phx
+	php
+	rep #$20
+	
+	; Store radix to temporary memory
+	rer mcdos_var_uitoa_radix
+	rlx
+	pha
+	tda
+	cmp #0
+	bne +
+	lda #10
++	sta $00,X
+	pla
+	
+	; Push null character
+	rha
+	lda #0
+	sep #$20
+	pha
+	rep #$20
+	rla
+	
+	; Perform division
+-	clc
+	zea
+	div $00,X
+	rha ; Save quotient to R
+	tda ; Use remainder
+	
+	; Convert digit to character and push
+	cmp #10
+	bcc +
+	sec
+	sbc #10
+	clc
+	adc #'a'
+	bra ++
++	clc
+	adc #'0'
++	sep #$20
+	pha
+	rep #$20
+	
+	; Loop if quotient not zero
+	rla
+	cmp #0
+	bne -
+	
+	; Transfer string on stack to memory
+	sep #$20
+	
+-	pla
+	sta $00,Y
+	beq +
+	iny
+	bra -
+	
++	plp
+	plx
+	rts
+.pend
+
+mcdos_var_uitoa_radix .word 0
+
+mcdos_func_readline .proc
+	php
+	sep #$20
+	
+	rhy ; Save starting pointer to R-stack
+	
+-	pha ; Save count to S-stack
+	jsr (MCDOS_NEXTKEY,X)
+	cmp #'\r' ; Carriage return completes entry
+	beq _mcdos_readline_exit
+	
+	cmp #'\b' ; Backspace can remove last character
+	bne ++
+	rep #$20
+	tya
+	cmp $00,R
+	sep #$20
+	beq + ; Don't go back if Y is at start of buffer
+	dey
+	phx
+	tyx
+	stz $00,X
+	plx
+	
+	pla
+	inc A
+	pha
+	
+	jsr (MCDOS_BACKSPACE,X)
++	pla
+	bra -
+	
++	rha ; Save character to R-stack
+	pla ; Pull remaining count from S-stack
+	bne +
+	sta $00,R ; If buffer is full, ignore character
+	rla
+	bra -
+
++	dec A ; Store and print character, decrement available count
+	pha
+	rla
+	phx
+	tyx
+	sta $00,X
+	plx
+	iny
+	jsr (MCDOS_PRINTCHAR,X)
+	pla
+	bra -
+	
+_mcdos_readline_exit
+	phx
+	tyx
+	stz $00,X
+	plx
+	
+	rly
+	pla
+	
+	plp
+	rts
+.pend
+
+mcdos_func_strsplit .proc
+	php
+	sep #$20
+	
+	pha
+	
+-	lda $00,Y
+	beq _mcdos_strsplit_eos
+	cmp $00,S
+	beq +
+	iny
+	bra -
+	
++	lda #0
+	sta $00,Y
+	iny
+	pla
+	plp
+	sec
+	rts
+
+_mcdos_strsplit_eos	
+	pla
+	plp
+	clc
+	rts
+.pend
+
+mcdos_func_backspace .proc
+	pha
+	phx
+	phy
+	php
+	sep #$30
+	
+	ldy RB_WINDOW+TERM_CURY
+	sty RB_WINDOW+TERM_MEMROW
+	ldx RB_WINDOW+TERM_CURX
+	
+	dex
+	stx RB_WINDOW+TERM_CURX
+	bpl + ; Don't need to change line if column is non-negative
+	
+	stz RB_WINDOW+TERM_CURX
+	
+	cpy #0
+	beq + ; Can't shift at start of screen
+	
+	dey
+	sty RB_WINDOW+TERM_CURY
+	sty RB_WINDOW+TERM_MEMROW
+	
+	ldx #79
+	stx RB_WINDOW+TERM_CURX
+	
++	lda #' '
+	sta RB_WINDOW+TERM_WINDOW,X
+
+	plp
+	ply
+	plx
+	pla
+	rts
+.pend
+
+mcdos_func_pause .proc
+	php
+	rep #$30
+	pha
+	phx
+	phy
+	rhi
+	
+	lda $07,S
+	inc A
+	tax
+	txi
+	
+	plp
+
+-	wai
+	php
+	sep #$20
+	lda RB_WINDOW+TERM_KB_POS
+	cmp RB_WINDOW+TERM_KB_START
+	bne +
+	rep #$20
+	plp
+	bra -
+	
++	inc RB_WINDOW+TERM_KB_START
+	rep #$30
+	rli
+	ply
+	plx
+	pla
+	plp
+	rts
+.pend
+
+mcdos_func_uatoi .proc
+	phx
+	php
+	rep #$20
+	
+	; Store radix to temporary memory
+	rer mcdos_var_uatoi_radix
+	rlx
+	pha
+	tda
+	cmp #0
+	bne +
+	lda #10
++	sta $00,X
+	pla
+	
+	; Load accumulator with zero
+	lda #0
+	
+	; Read next character
+-	pha ; Save accumulator
+	sep #$20
+	nxa
+	
+	; Do input checking
+	cmp #'A'
+	bcc +
+	cmp #'['
+	bcs +
+	; A-Z -> a-z
+	clc
+	adc #('a'-'A')
+	
++	cmp #'0'
+	bcc +
+	cmp #':'
+	bcs +
+	; '0'-'9' -> 0-9
+	sec
+	sbc #'0'
+	bra _mcdos_uatoi_append
+	
++	cmp #'a'
+	bcc _mcdos_uatoi_exit
+	cmp #'{'
+	bcs _mcdos_uatoi_exit
+	; a-z -> 10->36
+	sec
+	sbc #('a'+10)
+
+_mcdos_uatoi_append
+	rep #$20
+	
+	; Check parsed value against radix
+	cmp $00,X
+	bcc +
+	bra _mcdos_uatoi_exit
+	
+	; Multiply and accumulate
++	rha
+	pla
+	clc
+	mul $00,X
+	clc
+	adc $00,R
+	sta $00,R
+	rla
+	bra -
+
+_mcdos_uatoi_exit
+	rep #$20
+	
+	; Set I after number
+	rhi
+	rla
+	dec A
+	rha
+	rli
+	
+	; Restore accumulator
+	pla
+	
+	plp
+	plx
+	rts
+.pend
+
+mcdos_var_uatoi_radix .word 0
+
+mcdos_func_execute .proc
+	php
+	sep #$20
+	
+	phy ; Save command name
+	
+	rer mcdos_execute_nametable
+	rli ; Load nametable pointer
+	
+	lda #0 ; Store offset table index on stack
+	rha
+	
+_mcdos_execute_nextcmd
+	ply ; Restore command name pointer
+	phy
+	
+	nxa ; Check for null string
+	cmp #0
+	bne _mcdos_execute_checkcmd
+	
+	rhy
+	rer mcdos_str_nocmd
+	rli
+	jsr (MCDOS_PRINTF,X)
+	brk
+
+_mcdos_execute_checkcmd
+	cmp $00,Y ; Compare table and name strings
+	beq ++
+-	cmp #0 ; Skip to end of string
+	beq +
+	nxa
+	bra -
+	
++	rla ; Increment offset table index
+	inc A
+	rha
+	bra _mcdos_execute_nextcmd
+	
++	cmp #0 ; Check if end of string is reached
+	beq +
+	iny
+	nxa
+	bra _mcdos_execute_checkcmd
+	
+	; Execute function from the table
++	ply
+	rla	
+	rep #$20
+	
+	rer mcdos_execute_offtable
+	asl A
+	clc
+	adc $00,R ; A = Pointer into offset table
+	tay
+	lda $00,Y ; A = Function offset
+	
+	; Set function call address
+	rer _mcdos_execute_tblfield
+	rly
+	sta $00,Y
+	
+	.byte $FC ; JSR (Abs,X)
+_mcdos_execute_tblfield
+	.word 0   ; Subroutine address
+	
+	plp
+	rts
+.pend
+
+mcdos_str_nocmd .null "No such command \q%s\q!\r"
+
+mcdos_execute_nametable
+	.null "echo"
+	.null "cd"
+	.null "format"
+	.null "rename"
+	.null "ls"
+	.null "cat"
+	.null "clear"
+	.byte 0
+	
+mcdos_execute_offtable
+	.word MCDOS_CMD_ECHO
+	.word MCDOS_CMD_CD
+	.word MCDOS_CMD_FORMAT
+	.word MCDOS_CMD_RENAME
+	.word MCDOS_CMD_LS
+	.word MCDOS_CMD_CAT
+	.word MCDOS_CLEARSCR
+
+mcdos_func_interpret .proc
+	php
+	rep #$20
+	
+;	rhy
+;	rli
+;	jsr (MCDOS_PRINTSTR,X)
+	
+	rhy
+	rli
+	jsr (MCDOS_SKIPWHITE,X)
+	rhi
+	rly
+	
+-	rhy
+	lda #'\r'
+	jsr (MCDOS_STRSPLIT,X)
+	phy
+	php
+	
+	rly ; Single line, split and execute
+	rhy
+	rli
+	rhi
+	jsr (MCDOS_STRLEN,X)
+	cmp #0
+	beq ++
+	
+	lda #' '
+	jsr (MCDOS_STRSPLIT,X)
+	stz MCDOS_ARGS,X
+	bcc +
+	sty MCDOS_ARGS,X
++	rly
+	jsr (MCDOS_EXECUTE,X)
+	
++	plp
+	ply
+	bcs -
+
+	plp
+	rts
+.pend
+
+mcdos_func_make_resident .proc
+
+.pend
+
+mcdos_func_cmd_echo .proc
+	ldy MCDOS_ARGS,X
+	rhy
+	rli
+	jsr (MCDOS_PRINTSTR,X)
+	lda #'\r'
+	jsr (MCDOS_PRINTCHAR,X)
+	rts
+.pend
+
+mcdos_func_cmd_cd .proc
+	ldy MCDOS_ARGS,X
+	rhy
+	rli
+	zea
+	jsr (MCDOS_UATOI,X)
+	sta MCDOS_CURDRIVE,X
+	rts
+.pend
+
+mcdos_func_toupper .proc
+	pha
+	php
+	sep #$20
+	dey
+	
+-	iny
+	lda $00,Y
+	beq _mcdos_toupper_exit
+	cmp #'a'
+	bcc -
+	cmp #'{'
+	bcs -
+	sec
+	sbc #('a'-'A')
+	sta $00,Y
+	bra -
+	
+_mcdos_toupper_exit
+	plp
+	pla
+	rts
+.pend
+
+mcdos_func_tolower .proc
+	pha
+	php
+	sep #$20
+	dey
+
+-	iny
+	lda $00,Y
+	beq _mcdos_tolower_exit
+	cmp #'A'
+	bcc -
+	cmp #'['
+	bcs -
+	clc
+	adc #('a'-'A')
+	sta $00,Y
+	bra -
+	
+_mcdos_tolower_exit
+	plp
+	pla
+	rts
+.pend
+
+mcdos_func_printf .proc
+	phy
+	php
+	sep #$20
+	
+	pea 0 ; Character counter is on stack
+	
+	rer _mcdos_var_printf_buf
+	rly ; Y stores the buffer
+	bra +
+
+_mcdos_var_printf_buf
+	.fill 17
+
++	
+-	nxa
+	cmp #0
+	bne +
+	ply
+	plp
+	ply
+	rts
+	
++	cmp #'%'
+	beq +
+	jsr (MCDOS_PRINTCHAR,X)
+	rhx
+	tsx
+	rep #$20
+	inc $00,X
+	sep #$20
+	rlx
+	bra -
+	
++	nxa
+	cmp #0
+	bne +
+	ply
+	plp
+	ply
+	rts
+	
++	cmp #'%' ; '%'
+	bne +
+	jsr (MCDOS_PRINTCHAR,X)
+	rhx
+	tsx
+	rep #$20
+	inc $00,X
+	sep #$20
+	rlx
+-	bra --
+	
++	cmp #'d' ; Decimal signed integer
+	bne +
+	cmp #'i'
+	bne +
+	zea
+	sec
+	bra _mcdos_printf_num
+	
++	cmp #'u' ; Decimal unsigned integer
+	bne +
+	zea
+	clc
+	bra _mcdos_printf_num
+	
++	cmp #'o' ; Octal unsigned integer
+	bne +
+	rep #$20
+	pea 8
+	pld
+	clc
+	bra _mcdos_printf_num
+	
+.as
++	cmp #'x' ; Hexadecimal unsigned integer / pointer
+	bne +
+	cmp #'p'
+	bne +
+	rep #$20
+	pea 16
+	pld
+	clc
+	bra _mcdos_printf_num
+
+.as	
++	cmp #'X' ; Hexadecimal unsigned integer (upper case)
+	bne +
+	rep #$20
+	pea 16
+	pld
+	clc
+	sep #$40
+	bra _mcdos_printf_num
+	
+.as
++	cmp #'c' ; Character
+	bne +
+	rla
+	jsr (MCDOS_PRINTCHAR,X)
+	rhx
+	tsx
+	rep #$20
+	inc $00,X
+	sep #$20
+	rlx
+-	bra --
+	
++	cmp #'s' ; String
+	bne +
+	rhi
+	rly
+	rli
+	rhi
+	jsr (MCDOS_PRINTSTR,X)
+	rli
+	rep #$20
+	jsr (MCDOS_STRLEN,X)
+	clc
+	adc $00,S
+	sta $00,S
+	sep #$20
+	rhy
+	rli
+	bra -
+	
++	cmp #'n' ; Store number of characters printed to pointer
+	bne -
+	rep #$20
+	phy
+	rly
+	lda $2,S
+	sta $00,Y
+	sep #$20
+	bra -
+	
+_mcdos_printf_num ; Carry indicates signed, overflow indicates upper case
+	rep #$20
+	rla
+	sta $08
+	rhy
+	bcs +
+	jsr (MCDOS_UITOA,X)
+	bra ++
++	jsr (MCDOS_ITOA,X)
++	rly
+	bvc +
+	rhy
+	jsr (MCDOS_TOUPPER,X)
+	rly
++	rhi
+	rhy
+	rli
+	rhi
+	jsr (MCDOS_PRINTSTR,X)
+	rli
+	jsr (MCDOS_STRLEN,X)
+	clc
+	adc $00,S
+	sta $00,S
+	rli
+	sep #$20
+	bra -
+	
+.pend
+
+mcdos_func_atoi .proc
+	php
+	sep #$20
+	
+	lda #'-'
+	cmp $00,Y
+	clc
+	bne +
+	iny
+	sec
+
++	jsr (MCDOS_UATOI,X)
+	rep #$20
+
+	bcc +
+	eor #$FFFF
+	inc A
+	
++	plp
+	rts
+.pend
+
+mcdos_func_itoa .proc
+	php
+	rep #$20
+	
+	cmp #0
+	bpl +
+	
+	pha
+	sep #$20
+	lda #'-'
+	sta $00,Y
+	iny
+	rep #$20
+	pla
+	eor #$FFFF
+	inc A
+	
++	jsr (MCDOS_UATOI,X)
+	
+	plp
+	rts
+.pend
+
+mcdos_func_strlen .proc
+	phx
+	php
+	sep #$20
+	
+	ldx #0
+	
+-	nxa
+	cmp #0
+	beq +
+	inx
+	bra -
+	
++	rep #$20
+	txa
+	plp
+	plx
+	rts
+.pend
+
+mcdos_func_skipwhite .proc
+	pha
+	php
+	sep #$20
+	
+-	nxa
+	cmp #' '
+	beq -
+	cmp #'\r'
+	beq -
+	cmp #'\n'
+	beq -
+	cmp #'\t'
+	beq -
+	
+	phx
+	tix
+	dex
+	txi
+	plx
+	
+	plp
+	pla
+	rts
+.pend
+
+mcdos_func_cmd_format .proc
+	ldy MCDOS_ARGS,X
+	rhy
+	rli
+	jsr (MCDOS_SKIPWHITE,X)
+	sep #$20
+	nxa
+	cmp #'y'
+	beq +
+	
+	rer mcdos_str_formatwarn
+	rli
+	jsr (MCDOS_PRINTSTR,X)
+	jsr (MCDOS_NEXTKEY,X)
+	pha
+	lda #'\r'
+	jsr (MCDOS_PRINTCHAR,X)
+	pla
+	cmp #'y'
+	beq +
+	rts
+	
++	jsr (MCDOS_FORMAT,X)
+	rts
+.pend
+
+mcdos_str_formatwarn .null "Formatting will erase any data on the disk, continue? (y/n): "
+
+mcdos_func_format .proc
+	phy
+	pha
+	rhi
+	php
+	rep #$20
+	
+	mmu #MMU_GET_DEVICE
+	rha
+	lda MCDOS_CURDRIVE,X
+	mmu #MMU_MAP
+	
+	rer mcdos_const_mcfsboot
+	rli
+	lda #(mcdos_mcfsboot_end-mcdos_const_mcfsboot)
+	ldy #0
+	jsr (MCDOS_DISKWRITE,X)
+	
+	lda #0
+	ldy #128
+	rea RB_WINDOW+DRIVE_BUFFER
+	rli
+	jsr (MCDOS_MEMSET,X)
+	
+	lda #DRIVE_CMD_WRITESECTOR
+	ldy #4
+-	sty RB_WINDOW+DRIVE_SECTOR
+	jsr (MCDOS_DISKCMD,X)
+	iny
+	cpy #16
+	bne -
+	
+	rla
+	mmu #MMU_MAP
+	
+	plp
+	rli
+	pla
+	ply
+	rts
+	
+.pend
+
+mcdos_const_mcfsboot
+	.binary "mcfs_boot.bin"
+mcdos_mcfsboot_end
+
+mcdos_func_diskwrite .proc
+	phx
+	php
+	rep #$20
+	
+	tax
+	sep #$20
+	
+	sty RB_WINDOW+DRIVE_SECTOR
+	
+	; Transfer bytes to sector buffer
+-	ldy #0
+
+-	nxa
+	sta RB_WINDOW+DRIVE_BUFFER,Y
+	iny
+	dex
+	beq +
+	cpy #128
+	bne -
+	
+	; Write the current sector
+	rep #$20
+	phx
+	lda $3,S
+	tax
+	lda #DRIVE_CMD_WRITESECTOR
+	jsr (MCDOS_DISKCMD,X)
+	inc RB_WINDOW+DRIVE_SECTOR
+	sep #$20
+	plx
+	bra --
+	
+	
+	; Pad rest of buffer with zero
++	lda #0
+-	cpy #128
+	beq +
+	sta RB_WINDOW+DRIVE_BUFFER,Y
+	iny
+	bra -
+
+	; Write remaining sector
++	rep #$20
+	lda $1,S
+	tax
+	lda #DRIVE_CMD_WRITESECTOR
+	jsr (MCDOS_DISKCMD,X)
+	
+	plp
+	plx
+	rts
+	
+	
+.pend
+
+mcdos_func_memset .proc
+	phx
+	php
+	sep #$20
+	
+	tix
+	
+-	sta $00,X
+	inx
+	dey
+	bne -
+	
+	plp
+	plx
+	rts
+.pend
+
+mcdos_func_diskcmd .proc
+	phy
+	php
+	sep #$20
+	
+	ldy #10
+	
+	sta RB_WINDOW+DRIVE_CMD
+-	wai
+	cmp RB_WINDOW+DRIVE_CMD
+	bne +
+	dey
+	bne -
+	
+	lda MCDOS_CURTERM,X
+	mmu #MMU_MAP
+	rer mcdos_str_disktimeout
+	rli
+	jsr (MCDOS_PRINTSTR,X)
+	brk
+	
++	pha
+	lda RB_WINDOW+DRIVE_CMD
+	beq +
+	lda MCDOS_CURTERM,X
+	mmu #MMU_MAP
+	rer mcdos_str_diskerr
+	rli
+	jsr (MCDOS_PRINTSTR,X)
+	brk
+	
++	pla
+	plp
+	ply
+	rts
+.pend
+
+mcdos_str_diskerr .null "Disk drive I/O error!\r"
+mcdos_str_disktimeout .null "Disk drive timeout!\r"
+
+mcdos_func_cmd_rename .proc
+	lda MCDOS_CURDRIVE,X
+	mmu #MMU_MAP
+
+	ldy MCDOS_ARGS,X
+	rhy
+	rli
+	jsr (MCDOS_SKIPWHITE,X)
+	
+	ldy #0
+	sep #$20
+
+-	nxa
+	sta RB_WINDOW+DRIVE_BUFFER,Y
+	cmp #0
+	beq +
+	iny
+	cpy #128
+	beq +
+	bra -
+	
++	lda #DRIVE_CMD_WRITENAME
+	rep #$20
+	jsr (MCDOS_DISKCMD,X)
+	
+	lda MCDOS_CURTERM,X
+	mmu #MMU_MAP
+	rts
+.pend
+
+mcdos_func_cmd_iowrite .proc
+	
+.pend
+
+mcdos_func_cmd_ioread .proc
+	mmu #MMU_GET_DEVICE
+	pha
+
+	jsr (MCDOS_PARSENARG,X) ; Parse IO expander to read
+	mmu #MMU_MAP
+	lda RB_WINDOW+IOX_INPUT
+	
+	rha
+	pla
+	mmu #MMU_MAP
+	rla
+	
+	jsr (MCDOS_PUSH,X)
+	rts
+.pend
+
+mcdos_func_cmd_ioset .proc
+
+.pend
+
+mcdos_func_cmd_ioreset .proc
+
+.pend
+
+mcdos_func_cmd_sleep .proc
+	
+.pend
+
+mcdos_func_push .proc
+	phy
+	php
+	rep #$20
+	pha
+	
+	lda MCDOS_VALPTR,X
+	cmp #256
+	bne +
+	rer mcdos_str_stackovflw
+	rli
+	jsr (MCDOS_PRINTSTR,X)
+	brk
+	
++	rha
+	clc
+	adc MCDOS_VALSTACK,X
+	tay
+	pla
+	sta $00,Y
+	
+	rla
+	inc A
+	inc A
+	sta MCDOS_VALPTR,X
+	
+	plp
+	ply
+	rts
+.pend
+
+mcdos_str_stackovflw .null "Stack overflow!"
+
+mcdos_func_pop .proc
+	phy
+	php
+	rep #$20
+	
+	lda MCDOS_VALPTR,X
+	bne +
+	rer mcdos_str_stackunflw
+	rli
+	jsr (MCDOS_PRINTSTR,X)
+	brk
+	
++	dec A
+	dec A
+	sta MCDOS_VALPTR,X
+	clc
+	adc MCDOS_VALSTACK,X
+	tay
+	lda $00,Y
+	
+	plp
+	ply
+	rts
+.pend
+
+mcdos_str_stackunflw .null "Stack underflow!"
+
+mcdos_func_eval .proc
+
+.pend
+
+mcdos_func_cmd_eval .proc
+
+.pend
+
+mcdos_func_parsenarg .proc
+
+.pend
+
+mcdos_func_cmd_test .proc
+
+.pend
+
+mcdos_func_cmd_plus .proc
+
+.pend
+
+mcdos_func_cmd_minus .proc
+
+.pend
+
+mcdos_func_replace .proc
+	php
+	pha
+	sep #$20
+	xba
+	pla
+	rha
+	pla
+	rla
+	dey
+	
+-	iny
+	pha
+	lda $00,Y
+	beq +
+	pla
+	cmp $00,Y
+	bne -
+	xba
+	sta $00,Y
+	xba
+	bra -
+	
++	pla
+	plp
+	rts
+.pend
+
+mcdos_func_cmd_ls .proc
+	; Map drive and save drive and terminal IDs to the stack
+	rep #$20
+	mmu #MMU_GET_DEVICE
+	pha
+	lda MCDOS_CURDRIVE,X
+	pha
+	mmu #MMU_MAP
+
+	; Read the disk name and print it
+	lda #DRIVE_CMD_READNAME
+	jsr (MCDOS_DISKCMD,X)
+	rea RB_WINDOW+DRIVE_BUFFER
+	rli
+	ldy MCDOS_SCRATCHBUF,X
+	rhy
+	jsr (MCDOS_STRCPY,X)
+	rer mcdos_str_diskname
+	rli
+	lda $2,S
+	mmu #MMU_MAP
+	jsr (MCDOS_PRINTF,X)
+	
+	; Test if it is an MCFS volume
+	lda $0,S
+	mmu #MMU_MAP
+	jsr (MCDOS_MCFS_DISKINFO,X)
+	bcs +
+	lda $2,S
+	mmu #MMU_MAP
+	rer mcdos_str_nonmcfs
+	rli
+	jsr (MCDOS_PRINTSTR,X)
+	bra _mcdos_cmd_ls_exit
+	
++	; Print volume name and sector usage
+	rha
+	ldy MCDOS_SCRATCHBUF,X
+	rhy
+	jsr (MCDOS_STRCPY,X)
+	rer mcdos_str_directory
+	rli
+	lda $2,S
+	mmu #MMU_MAP
+	jsr (MCDOS_PRINTF,X)
+	lda $0,S
+	mmu #MMU_MAP
+	
+	; Current file index stored on stack
+	pea 0
+	
+-	lda $00,S
+	cmp #39
+	bne +
+	pla
+	bra _mcdos_cmd_ls_exit
++	inc A
+	sta $00,S
+	dec A
+	jsr (MCDOS_MCFS_FILEINFO,X)
+	bcc -
+	
+	ldy MCDOS_SCRATCHBUF,X
+	rhy
+	jsr (MCDOS_STRCPY,X)
+	rha
+	lda $00,S
+	rha
+	rer mcdos_str_entry
+	rli
+	lda $4,S
+	mmu #MMU_MAP
+	jsr (MCDOS_PRINTF,X)
+	lda $2,S
+	mmu #MMU_MAP
+	bra -
+
+_mcdos_cmd_ls_exit
+	pla
+	pla
+	mmu #MMU_MAP
+	
+	rts
+.pend
+
+mcdos_str_diskname .null "Disk name: %s\r"
+mcdos_str_nonmcfs .null "Non-MCFS volume\r"
+mcdos_str_directory .null "Volume name: %s (%u / 2048 sectors)\r"
+mcdos_str_entry .null "%u# | (%u) %s\r"
+
+mcdos_func_memcpy .proc
+	phx
+	php
+	rep #$20
+	tax
+	sep #$20
+	
+-	nxa
+	sta $00,Y
+	dex
+	beq +
+	iny
+	bra -
+	
++	plp
+	plx
+	rts
+.pend
+
+mcdos_func_strcpy .proc
+	pha
+	php
+	sep #$20
+	
+-	nxa
+	sta $00,Y
+	iny
+	cmp #0
+	bne -
+	
+	plp
+	pla
+	rts
+.pend
+
+mcdos_func_mcfs_detect .proc
+	php
+	rep #$20
+	
+	; Read first sector
+	stz RB_WINDOW+DRIVE_SECTOR
+	lda #DRIVE_CMD_READSECTOR
+	jsr (MCDOS_DISKCMD,X)
+	
+	; String "MCFS" should be at offset 124
+	lda #"MC"
+	cmp RB_WINDOW+DRIVE_BUFFER+124
+	bne +
+	lda #"FS"
+	cmp RB_WINDOW+DRIVE_BUFFER+126
+	bne +
+	plp
+	sec
+	rts
+	
++	plp
+	clc
+	rts
+	
+.pend
+
+mcdos_func_mcfs_fileinfo .proc
+	php
+	rep #$20
+	
+	; Discard requests above index 38, max of 39 files per disk
+	cmp #39
+	bcc +
+	plp
+	clc
+	rts
+	
+	; First record stores volume name
++	inc A
+	
+	; Divide by 4 to get sector offset
+	pha
+	lsr A
+	lsr A
+	; Directory sectors start at sector 6
+	clc
+	adc #6
+	sta RB_WINDOW+DRIVE_SECTOR
+	
+	; Read sector
+	lda #DRIVE_CMD_READSECTOR
+	jsr (MCDOS_DISKCMD,X)
+	
+	; Modulus 4 to get entry index in sector
+	pla
+	and #3
+	; Multiply by 32 to get byte offset into sector
+	shl A
+	shl A
+	shl A
+	shl A
+	shl A
+	
+	; Shift offset to address in buffer, transfer to I
+	clc
+	adc #RB_WINDOW+DRIVE_BUFFER
+	rha
+	rli
+	
+	; First value is starting sector
+	nxa
+	cmp #0
+	bne +
+	plp
+	clc
+	rts
+	
++	tay
+
+	; Second value is size
+	nxa
+	rha
+	
+	rhy
+	; I now points to name string
+	rhi
+	rhi
+	rly
+	; Mask off top bit
+	sep #$20
+-	nxa
+	and #$7F
+	sta $00,Y
+	iny
+	cmp #0
+	bne -
+	rep #$20
+	
+	rli
+	rly
+	rla
+	
+	plp
+	sec
+	rts
+.pend
+
+mcdos_func_mcfs_diskinfo .proc
+	phy
+	php
+	rep #$20
+	
+	; Detect first
+	jsr (MCDOS_MCFS_DETECT,X)
+	bcs +
+	plp
+	ply
+	clc
+	rts
+	
+	; TODO: How to count the bits without using extra memory?
++	; Read sector allocation map
+	lda #4
+	sta RB_WINDOW+DRIVE_SECTOR
+	lda #DRIVE_CMD_READSECTOR
+	jsr (MCDOS_DISKCMD,X)
+
+	rer mcdos_var_sambuf
+	rly
+	rea RB_WINDOW+DRIVE_BUFFER
+	rli
+	lda #256
+	rha
+	jsr (MCDOS_MEMCPY,X)
+	
+	inc RB_WINDOW+DRIVE_SECTOR
+	lda #DRIVE_CMD_READSECTOR
+	jsr (MCDOS_DISKCMD,X)
+	
+	rer mcdos_var_sambuf
+	rla
+	clc
+	adc #256
+	tay
+	rea RB_WINDOW+DRIVE_BUFFER
+	rli
+	lda #256
+	rha
+	jsr (MCDOS_MEMCPY,X)
+	
+	; Count number of in-use sectors
+	rli
+	stz RB_WINDOW+DRIVE_SECTOR ; Ugly hack because of register starvation
+	
+	ldy #0 ; Word counter in Y
+
+-	nxa
+	iny
+-	lsr A
+	bcc +
+	inc RB_WINDOW+DRIVE_SECTOR
++	bne - ; Shift bits until zero
+	cpy #256
+	bne -- ; Loop until 256 words have bits counted
+	
+	lda RB_WINDOW+DRIVE_SECTOR
+	rha ; Save used sector count to R-stack
+	
+	; Read directory sector
+	lda #6
+	sta RB_WINDOW+DRIVE_SECTOR
+	lda #DRIVE_CMD_READSECTOR
+	jsr (MCDOS_DISKCMD,X)
+	
+	; Clear all MSBs of name
+	ldy #4
+-	lda RB_WINDOW+DRIVE_BUFFER,Y
+	and #$7F7F
+	sta RB_WINDOW+DRIVE_BUFFER,Y
+	iny
+	iny
+	cpy #32
+	bne -
+
+	; Load return values
+	rea RB_WINDOW+DRIVE_BUFFER+4
+	rli	
+	rla
+	
+	plp
+	ply
+	sec
+	rts
+.pend
+
+mcdos_var_sambuf .fill 512
+
+mcdos_func_mcfs_read .proc
+	php
+	rep #$20
+	
+	rea RB_WINDOW+DRIVE_BUFFER+2
+	rli
+	
+	sty RB_WINDOW+DRIVE_SECTOR
+	lda #DRIVE_CMD_READSECTOR
+	jsr (MCDOS_DISKCMD,X)
+	lda RB_WINDOW+DRIVE_BUFFER
+	tay
+	
+	pha
+	and #$FF00
+	cmp #$FF00
+	bne +
+	pla
+	and #$FF
+	plp
+	sec
+	rts
+	
++	pla
+	lda #126
+	plp
+	clc
+	rts
+.pend
+
+mcdos_func_mcfs_find .proc
+	
+.pend
+
+mcdos_func_mcfs_findhere .proc
+	phy
+	php
+	rep #$20
+	
+	lda #0
+	rhi
+	
+-	pha
+	jsr (MCDOS_MCFS_FILEINFO,X)
+	rhi
+	rly
+	rli
+	rhi
+	jsr (MCDOS_STRCMP,X)
+	bcs +
+	pla
+	inc A
+	cmp #39
+	bne -
+	; File not found
+	rli
+	plp
+	ply
+	clc
+	rts
+	
++	rli
+	pla
+	plp
+	ply
+	sec
+	rts
+.pend
+
+mcdos_func_strcmp .proc
+	pha
+	php
+	sep #$20
+	
+-	nxa
+	cmp $00,Y
+	beq + ; Characters differ
+	plp
+	pla
+	clc
+	rts
+	
++	cmp #0
+	beq + ; End of string
+	iny
+	bra -
+
++	plp
+	pla
+	sec
+	rts
+.pend
+
+mcdos_func_cmd_cat .proc
+	mmu #MMU_GET_DEVICE
+	pha ; $4
+	lda MCDOS_CURDRIVE,X
+	pha ; $2
+	mmu #MMU_MAP
+
+	lda MCDOS_ARGS,X
+	rha
+	rli
+	
+	jsr (MCDOS_MCFS_FINDHERE,X)
+	bcs +
+	pla
+	pla
+	mmu #MMU_MAP
+	lda MCDOS_ARGS,X
+	rha
+	rer mcdos_str_nocatfile
+	rli
+	jsr (MCDOS_PRINTF,X)
+	rts
+	
++	sep #$20
+	jsr (MCDOS_MCFS_FILEINFO,X)
+	
+-	rep #$20 ; Remap drive
+	lda $0,S
+	mmu #MMU_MAP
+	sep #$20
+	
+	jsr (MCDOS_MCFS_READ,X)
+	php ; $1, save carry flag
+	
+	; Copy read data to scratch buffer
+	rhy
+	ldy MCDOS_SCRATCHBUF,X
+	rhy
+	rha
+	jsr (MCDOS_MEMCPY,X)
+	rla
+	rli
+	rly
+		
+-	pha ; $0, save byte counter
+
+	rep #$20 ; Remap terminal
+	lda $4,S
+	mmu #MMU_MAP
+	sep #$20
+
+	nxa
+	jsr (MCDOS_PRINTCHAR,X)
+	
+	pla ; Count bytes
+	dec A
+	bne -
+	
+	plp ; Keep reading if not end of file
+	bcc --
+	
+	rep #$20
+	pla
+	pla
+	mmu #MMU_MAP
+	rts
+.pend
+
+mcdos_str_nocatfile .null "File \q%s\q does not exist!"
+
+mcdos_func_cmd_stack .proc
+	lda MCDOS_VALPTR
+	lsr A
+	
+	bne +
+	rts
+
++
+-	dec A
+	pha
+	jsr (MCDOS_STACK_INDEX,X)
+	lda $00,Y
+	
+	rha
+	rer mcdos_str_stackval
+	rli
+	jsr (MCDOS_PRINTF,X)
+	
+	pla
+	bne -
+	
+	rts
+.pend
+
+mcdos_str_stackval .null "%u "
+
+mcdos_func_stack_index .proc
+	php
+	rep #$20
+	
+	cmp #128
+	bcc +
+	rer mcdos_str_badindex
+	rli
+	jsr (MCDOS_PRINTSTR,X)
+	brk
+	
++	asl A
+	clc
+	adc MCDOS_VALSTACK,X
+	tay
+	
+	rts
+.pend
+
+mcdos_str_badindex .null "Stack index out of bounds!"
+
+;;;;;;;;;;;;;;;;;;;;;
+; End of MCDOS code ;
+;;;;;;;;;;;;;;;;;;;;;
+mcdos_end
+	
+.here
+
+.align 128, $00

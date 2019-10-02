@@ -142,8 +142,8 @@ Notes:
  10E0 | HERE      | Pushes the HERE address
  10EF | TOP       | Pushes the address of the TOP variable
  10FE | STATE     | Pushes the address of the STATE variable
- 110D | PROBE     | ?
- 1155 | FREE      | ?
+ 110D | PROBE     | Computes and pushes the highest memory address
+ 1155 | FREE      | Pushes the amount of available memory in the FORTH environment
  116A | ALLOT     | Pops a number and allocates that number of byte of memory, pushes the pointer
  119F | ,         | Appends a word to allocated memory
  11AF | ,C        | Appends a character to allocated memory
@@ -170,15 +170,24 @@ Notes:
  1685 | RP0       | Pushes the base address of the call stack
  1694 | >NAME     | ?
  16AF | NAME>     | ?
- 16C7 | FIND      | ?
+ 16C7 | FIND      | Pops a string, then pushes the entry point of the word named that, or 0 if not found
  1719 | ACCEPT    | ?
  1778 | 0SP       | Clears the stack
  178D | INTERPRET | ?
  1829 | QUIT      | Quits to the FORTH shell
- 18B6 | DEPTH     | ?
+ 188B | WORDS     | Prints the list of all words in the FORTH environment
+ 18B6 | DEPTH     | Pushes the number of values on the stack
+ 18CA | .S        | Prints the values on the stack in order from bottom to top
+ 18F1 | '         | Reads a word from the TIB, then pushes the entry point of the word if found
+ 192B | FORGET    | Removes the next word in the TIB from the vocabulary list
+ 1950 | IOXADDR   | Pushes the address of the IOXADDR variable
+ 195E | IOX@      | Pushes the value read from the IO expander at address IOXADDR
+ 1976 | IOX!      | Pops a value and writes it to the IO expander at address IOXADDR
+ 1990 | IOXSET    | Pops a value and ORs the output of the selected IO expander with it
+ 19B2 | IOXRST    | Pops a value and ANDs the output of the selected IO expander with its inverse
  19D8 | DISKADDR  | Pushes the address of the DISKADDR variable
  19EB | DISKNAME" | Sets the name of the selected disk
- 1A31 | DISKID    | 
+ 1A31 | DISKID    | Loads the disk ID into the scratch buffer and prints it
  1A75 | DISKWS    |
  
  1D56 | COLD      | Soft-reboots the interpreter, doesn't reset word list

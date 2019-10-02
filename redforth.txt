@@ -2,7 +2,7 @@
 
 // S stack is used for the FORTH value stack
 // R stack is used for the FORTH call stack
-// I points to the list of command addresses executing
+// I is used for the call list of FORTH words
 
 // FORTH words are packed next to each other with no padding
 //     in memory, making it easy to iterate the entire list
@@ -14,19 +14,18 @@
 //     00 <name> 00 <flags> <address>
 //
 //     Flag Bits:
-//       0: 
-//       1: Hidden (Not shown in WORDS)
+//       0: Immediate (Executed when interpreted)
+//       1: Hidden (Not usable via FIND)
 
 // FORTH words always have 'native' entry points with 65EL02
-//    machine code. To go to the next word in the program, the
-//    NXT instruction jumps the next word's native entry point
-//    in the call list pointed to by I. Some words are implemented
-//    as precompiled FORTH programs and start with ENT with the
-//    address of the first word's entry point. This causes the
-//    CPU to push the call list pointer on the call stack, set it
-//    to the address after the ENT instruction (which is a list of
-//    entry points) and the word called by ENT will then jump to the
-//    next entry point in the list following the ENT.
+//    machine code. Some words are implemented as precompiled
+//    FORTH programs starting with an ENT instruction. This
+//    pushes I (the call list pointer) to the R stack (the
+//    call stack), then jumps to the entry point of the first
+//    word. The final word is usually EXIT, which pops the previous
+//    call list pointer from the call stack into I, then executes
+//    a NXT instruction, jumping to the next word in the caller's
+//    call list.
 //    
 //    Example:
 //
@@ -61,7 +60,7 @@ _start:
 050B: A9 00 04 | lda 0x400   // Set external memory mapped window to 0x400
 050E: EF 03    | mmu 0x03
 0510: EF 04    | mmu 0x04    // Enable external memory mapped window
-0512: A9 00 05 | lda 0x500   // Set Power-On address to 0x500
+0512: A9 00 05 | lda 0x500   // Set Power-On reset address to 0x500
 0515: EF 06    | mmu 0x06
 0517: 4C 56 1D | jmp _func_COLD // Cold boot
 
@@ -136,6 +135,7 @@ _func_qbranch:
 0584: 00
 _ascii_do:     | "(do)"
 0585: 28 64 6F 29 00 00 7D 05
+_func_do:
 058D: 42       | nxa         // Next word into A
 058E: A3 02    | lda [S+0x02]// Load A with S[1]
 0590: 4B       | rha         // Push A to call stack
@@ -149,6 +149,7 @@ _ascii_do:     | "(do)"
 0598: 00 
 _ascii_qdo:    | "(?do)"
 0599: 28 3F 64 6F 29 00 00 8D 05
+_func_qdo:
 05A2: 42       | nxa
 05A3: AA       | tax
 05A4: A3 02    | lda [S+0x02]
@@ -169,6 +170,7 @@ _br_loop_zero:
 05B4: 00
 _ascii_loop:   | "(loop)"
 05B5: 28 6C 6F 6F 70 29 00 00 A2 05
+_func_loop:
 05BF: 42       | nxa
 05C0: AA       | tax
 05C1: A7 00    | lda [R+0x00]
@@ -186,6 +188,7 @@ _br_qloop_nzero:
 05D2: 00
 _ascii_ploop:  | "(+loop)"
 05D3: 28 2B 6C 6F 6F 70 29 00 00 BF 05
+_func_ploop:
 05DE: 42       | nxa
 05DF: AA       | tax
 05E0: A3 00    | lda [S+0x00]
@@ -205,6 +208,7 @@ _ascii_ploop:  | "(+loop)"
 05F4: 00
 _ascii_leave:  | "(leave)"
 05F5: 28 6C 65 61 76 65 29 00 00 DE 05
+_func_leave:
 0600: 6B       | pla         // Pop twice
 0601: 6B       | pla
 0602: 42       | nxa         // Next word
@@ -218,6 +222,7 @@ _ascii_leave:  | "(leave)"
 0609: 00 
 _ascii_UNLOOP: | "UNLOOP"
 060A: 55 4E 4C 4F 4F 50 00 00 00 06
+_func_unloop:
 0614: 6B       | pla         // Pop twice and continue
 0615: 6B       | pla
 0616: 02       | nxt
@@ -225,7 +230,8 @@ _ascii_UNLOOP: | "UNLOOP"
 // Pushes the value of the loop counter
 0617: 00
 _ascii_I:      | "I"
-0618: 49 00 00 14 06 
+0618: 49 00 00 14 06
+_func_I:
 061D: A7 00    | lda [R+0x00]// A = return location
 061F: 18       | clc
 0620: 67 02    | adc [R+0x02]// Add 2nd level return location
@@ -235,7 +241,8 @@ _ascii_I:      | "I"
 // Pushes the value of the outer loop counter
 0624: 00
 _ascii_J:      | "J"
-0625: 4A 00 00 1D 06 
+0625: 4A 00 00 1D 06
+_func_J: 
 062A: A7 04    | lda [R+0x04]
 062C: 18       | clc
 062D: 67 06    | adc [R+0x06]
@@ -640,6 +647,7 @@ _func_UMslashMOD:
 083E: 00
 _ascii_2star:  | "2*"
 083F: 32 2A 00 00 32 08
+_func_2star:
 0845: 68       | pla
 0846: 18       | clc
 0847: 2A       | rol A
@@ -650,6 +658,7 @@ _ascii_2star:  | "2*"
 084A: 00
 _ascii_2slash: | "2/"
 084B: 32 2F 00 00 45 08
+_func_2slash:
 0851: A3 00    | lda [S+0x00]
 0853: 2A       | rol A
 0854: 68       | pla
@@ -2178,6 +2187,7 @@ _ascii_IMMEDIATE: | "IMMEDIATE"
 132C: 00
 _ascii_lpdoesrp: | "(does)"
 132D: 28 64 6F 65 73 29 00 00 11 13
+_func_lpdoesrp
 1337: 22 2F 07 | ent _func_Rgt     // R>
 133A: C2 10    | _func_VOCAB       // VOCAB
 133C: 73 07    | _func_at          // @
@@ -2188,6 +2198,7 @@ _ascii_lpdoesrp: | "(does)"
 1344: 00
 _ascii_DOESgt: | "DOES>"
 1345: 44 4F 45 53 3E 00 01 37 13
+_func_DOESgt
 134E: 22 50 05 | ent _func_lit  // (lit)
 1351: 37 13    | _func_lpdoesrp //     _func_lpdoesrp
 1353: 9F 11    | _func_comma    // ,
@@ -2331,41 +2342,41 @@ _func_NAMEgt:
 _ascii_FIND:   | "FIND"
 16BF: 46 49 4E 44 00 00 AF 16
 _func_FIND:
-16C7: 22 C2 10 | ent _func_VOCAB
-16CA: 73 07    | _func_at
-16CC: 49 06    | _func_DUP
-16CE: 7D 05    | _func_qbranch
-16D0: 04 17    | 0x1704
-16D2: 65 06    | _func_2DUP
-16D4: 94 16    | _func_gtNAME
-16D6: 8F 0C    | _func_STRCMP
-16D8: 13 09    | _func_zeroeq
-16DA: B3 06    | _func_OVER
-16DC: 50 05    | _func_lit
-16DE: 03 00    | 0x0003
-16E0: 9C 07    | _func_minus
-16E2: 7F 07    | _func_Cat
-16E4: 50 05    | _func_lit
-16E6: 02 00    | 0x0002
-16E8: 86 08    | _func_AND
-16EA: 13 09    | _func_zeroeq
-16EC: 86 08    | _func_AND
-16EE: 7D 05    | _func_qbranch
-16F0: F8 16    | 0x16F8
-16F2: EF 0A    | _func_TRUE
-16F4: 6B 05    | _func_branch
-16F6: 00 17    | 0x1700
-16F8: FD 09    | _func_CELL
-16FA: 9C 07    | _func_minus
-16FC: 73 07    | _func_at
-16FE: FE 0A    | _func_FALSE
-1700: 6B 05    | _func_branch
-1702: 06 17    | 0x1706
-1704: EF 0A    | _func_TRUE
-1706: 7D 05    | _func_qbranch
-1708: CC 16    | 0x16CC
-170A: 0B 07    | _func_NIP
-170C: 5C 05    | _func_EXIT
+16C7: 22 C2 10 | ent _func_VOCAB // VOCAB
+16CA: 73 07    | _func_at        // @
+16CC: 49 06    | _func_DUP       // DUP
+16CE: 7D 05    | _func_qbranch   // (?branch)
+16D0: 04 17    | 0x1704          //     0x1704
+16D2: 65 06    | _func_2DUP      // 2DUP
+16D4: 94 16    | _func_gtNAME    // >NAME
+16D6: 8F 0C    | _func_STRCMP    // STRCMP
+16D8: 13 09    | _func_zeroeq    // 0=
+16DA: B3 06    | _func_OVER      // OVER
+16DC: 50 05    | _func_lit       // (lit)
+16DE: 03 00    | 0x0003          //     0x0003
+16E0: 9C 07    | _func_minus     // -
+16E2: 7F 07    | _func_Cat       // C@
+16E4: 50 05    | _func_lit       // (lit)
+16E6: 02 00    | 0x0002          //     0x0002
+16E8: 86 08    | _func_AND       // AND
+16EA: 13 09    | _func_zeroeq    // 0=
+16EC: 86 08    | _func_AND       // AND
+16EE: 7D 05    | _func_qbranch   // (?branch)
+16F0: F8 16    | 0x16F8          //     0x16F8
+16F2: EF 0A    | _func_TRUE      // TRUE
+16F4: 6B 05    | _func_branch    // (branch)
+16F6: 00 17    | 0x1700          //     0x1700
+16F8: FD 09    | _func_CELL      // CELL
+16FA: 9C 07    | _func_minus     // -
+16FC: 73 07    | _func_at        // @
+16FE: FE 0A    | _func_FALSE     // FALSE
+1700: 6B 05    | _func_branch    // (branch)
+1702: 06 17    | 0x1706          //     0x1706
+1704: EF 0A    | _func_TRUE      // TRUE
+1706: 7D 05    | _func_qbranch   // (?branch)
+1708: CC 16    | 0x16CC          //     0x16CC
+170A: 0B 07    | _func_NIP       // NIP
+170C: 5C 05    | _func_EXIT      // EXIT
 
 170E: 00
 _ascii_ACCEPT: | "ACCEPT"
@@ -2537,32 +2548,161 @@ _str_: "compile: \0"
 187D: 6B 05    | _func_branch        // (branch)
 187F: 36 18    | 0x1836              //     0x1836
 
-1881: 00 57 4F 52 44 53 00 00 29 18 22 C2 10 73 07
-1890: 49 06 7D 05 A8 18 49 06 94 16 17 10 07 10 FD 09
-18A0: 9C 07 73 07 6B 05 90 18 75 06 5C 05
+1881: 00
+_ascii_WORDS:
+1882: 57 4F 52 44 53 00 00 29 18
+_func_WORDS:
+188B: 22 C2 10 | ent _func_VOCAB
+188E: 73 07    | _func_at
+1890: 49 06    | _func_DUP
+1892: 7D 05    | _func_qbranch
+1894: A8 18    | 0x18A8
+1896: 49 06    | _func_DUP
+1898: 94 16    | _func_gtNAME
+189A: 17 10    | _func_TYPE
+189C: 07 10    | _func_SPACE
+189E: FD 09    | _func_CELL
+18A0: 9C 07    | _func_minus
+18A2: 73 07    | _func_at
+18A4: 6B 05    | _func_branch
+18A6: 90 18    | 0x1890
+18A8: 75 06    | _func_DROP
+18AA: 5C 05    | _func_EXIT
 
 11AC: 00
 _ascii_DEPTH:  | "DEPTH"
 11AD: 44 45 50 54 48 00 00 8B 18
 _func_DEPTH:
-18B6: 22 E8 08 78 16 8D 06 9C 07 51
-18C0: 08 5C 05 00 2E 53 00 00 B6 18 22 B6 18 49 06 50
-18D0: 05 00 00 A2 05 E7 18 49 06 1D 06 9C 07 9B 06 34
-18E0: 10 BF 05 D7 18 14 06 75 06 5C 05 00 27 00 00 CA
-18F0: 18 22 EC 11 49 06 C7 16 56 06 13 09 7D 05 1C 19
-1900: E2 0F 55 6E 6B 6E 6F 77 6E 20 54 6F 6B 65 6E 3A
-1910: 20 00 17 10 C7 0E A1 10 6B 05 1E 19 0B 07 5C 05
-1920: 00 46 4F 52 47 45 54 00 00 F1 18 22 F1 18 49 06
-1930: 94 16 DC 08 D2 10 38 07 FD 09 9C 07 73 07 C2 10
-1940: 38 07 5C 05 00 49 4F 58 41 44 44 52 00 00 2B 19
-1950: 22 34 05 03 00 00 49 4F 58 40 00 00 50 19 22 50
-1960: 19 73 07 B0 0D 50 05 00 03 73 07 5C 05 00 49 4F
-1970: 58 21 00 00 5E 19 22 50 19 73 07 B0 0D 50 05 02
-1980: 03 38 07 5C 05 00 49 4F 58 53 45 54 00 00 76 19
-1990: 22 50 19 73 07 B0 0D 50 05 02 03 73 07 93 08 50
-19A0: 05 02 03 38 07 5C 05 00 49 4F 58 52 53 54 00 00
-19B0: 90 19 22 50 19 73 07 B0 0D B2 08 50 05 02 03 73
-19C0: 07 86 08 50 05 02 03 38 07 5C 05
+18B6: 22 E8 08 | ent _func_SPat      // SP@
+18B9: 78 16    | _func_SP0           // SP0
+18BB: 8D 06    | _func_SWAP          // SWAP
+18BD: 9C 07    | _func_minus         // -
+18BF: 51 08    | _func_2slash        // 2/
+18C1: 5C 05    | _func_EXIT          // EXIT
+
+18C3: 00
+_ascii_dotS:   | ".S"
+18C4: 2E 53 00 00 B6 18
+_func_dotS:
+18CA: 22 B6 18 | ent _func_DEPTH     // DEPTH
+18CD: 49 06    | _func_DUP           // DUP
+18CF: 50 05    | _func_lit           // (lit)
+18D1: 00 00    | 0x0000              //     0x0000
+18D3: A2 05    | _func_qdo           // (?do)
+18D5: E7 18    | 0x18E7              //     0x18E7
+18D7: 49 06    | _func_DUP           // DUP
+18D9: 1D 06    | _func_I             // I
+18DB: 9C 07    | _func_minus         // -
+18DD: 9B 06    | _func_PICK          // PICK
+18DF: 34 10    | _func_dot           // .
+18E1: BF 05    | _func_loop          // (loop)
+18E3: D7 18    | 0x18D7              //     0x18D7
+18E5: 14 06    | _func_UNLOOP        // UNLOOP
+18E7: 75 06    | _func_DROP          // DROP
+18E9: 5C 05    | _func_EXIT          // EXIT
+
+18EB: 00
+_ascii_apostrophe:  | "\'"
+18EC: 27 00 00 CA 18
+_func_apostrophe:
+18F1: 22 EC 11 | ent _func_TIBWORD   // TIBWORD
+18F4: 49 06    | _func_DUP           // DUP
+18F6: C7 16    | _func_FIND          // FIND
+18F8: 56 06    | _func_qDUP          // ?DUP
+18FA: 13 09    | _func_zeroeq        // 0=
+18FC: 7D 05    | _func_qbranch       // (?branch)
+18FE: 1C 19    | 0x191C              //     0x191C
+1900: E2 0F    | _func_lpdotquoterp  // (.")
+_ascii_unknowntoken: "Unknown token: \0"
+1902: 55 6E 6B 6E 6F 77 6E 20 54 6F 6B 65 6E 3A 20 00
+1912: 17 10    | _func_TYPE          // TYPE
+1914: C7 0E    | _func_CR            // CR
+1916: A1 10    | _func_ABORT         // ABORT
+1918: 6B 05    | _func_branch        // (branch)
+191A: 1E 19    | 0x191E              //     0x191E
+191C: 0B 07    | _func_NIP           // NIP
+191E: 5C 05    | _func_EXIT          // EXIT
+
+1920: 00
+_ascii_FORGET:
+1921: 46 4F 52 47 45 54 00 00 F1 18
+_func_FORGET:
+192B: 22 F1 18 | ent _func_apostrophe // '
+192E: 49 06    | _func_DUP            // DUP
+1930: 94 16    | _func_gtNAME         // >NAME
+1932: DC 08    | _func_1minus         // 1-
+1934: D2 10    | _func_lpHERErp       // (HERE)
+1936: 38 07    | _func_exclamation    // !
+1938: FD 09    | _func_CELL           // CELL
+193A: 9C 07    | _func_minus          // -
+193C: 73 07    | _func_at             // @
+193E: C2 10    | _func_VOCAB          // VOCAB
+1940: 38 07    | _func_exclamation    // !
+1942: 5C 05    | _func_EXIT
+
+1944: 00
+_ascii_IOXADDR: | "IOXADDR"
+1945: 49 4F 58 41 44 44 52 00 00 2B 19
+_func_IOXADDR:
+1950: 22 34 05 ent _func_DOVAR
+1953: 03 00    | 0x0003
+
+1955: 00
+_ascii_IOXat:  | "IOX@"
+1956: 49 4F 58 40 00 00 50 19
+_func_IOXat:
+195E: 22 50 19 | ent _func_IOXADDR
+1961: 73 07    | _func_at
+1963: B0 0D    | _func_RBPexclamation
+1965: 50 05    | _func_lit
+1967: 00 03    | 0x0300
+1969: 73 07    | _func_at
+196B: 5C 05    | _func_EXIT
+
+196D: 00
+_ascii_IOXexclamation: | "IOX!"
+196E: 49 4F 58 21 00 00 5E 19
+_func_IOXexclamation:
+1976: 22 50 19 | ent _func_IOXADDR
+1979: 73 07    | _func_at
+197B: B0 0D    | _func_RBPexclamation
+197D: 50 05    | _func_lit
+197F: 02 03    | 0x0302
+1981: 38 07    | _func_exclamation
+1983: 5C 05    | _func_EXIT
+
+1985: 00
+_ascii_IOXSET: | "IOXSET"
+1986: 49 4F 58 53 45 54 00 00 76 19
+_func_IOXSET:
+1990: 22 50 19 | ent _func_IOXADDR
+1993: 73 07    | _func_at
+1995: B0 0D    | _func_RBPexclamation
+1997: 50 05    | _func_lit
+1999: 02 03    | 0x0302
+199B: 73 07    | _func_at
+199D: 93 08    | _func_OR
+199F: 50 05    | _func_lit
+19A1: 02 03    | 0x0302
+19A3: 38 07    | _func_exclamation
+19A5: 5C 05    | _func_EXIT
+
+19A7: 00
+_ascii_IOXRST: | "IOXRST"
+19A8: 49 4F 58 52 53 54 00 00 90 19
+_func_IOXRST:
+19B2: 22 50 19 | ent _func_IOXADDR
+19B5: 73 07    | _func_at
+19B7: B0 0D    | _func_RBPexclamation
+19B9: B2 08    | _func_INVERT
+19BB: 50 05    | _func_lit
+19BD: 02 03    | 0x0302
+19BF: 73 07    | _func_at
+19C1: 86 08    | _func_AND
+19C3: 50 05    | _func_lit
+19C5: 02 03    | 0x0302
+19C7: 38 07    | _func_exclamation
+19C9: 5C 05    | _func_EXIT
 
 19CB: 00
 _ascii_DISKADDR: | "DISKADDR"
@@ -2610,54 +2750,126 @@ _func_DISKNAME:
 _ascii_DISKID: | "DISKID"
 1A27: 44 49 53 4B 49 44 00 00 EB 19
 _func_DISKID:
-1A31: 22 D8 19
-1A34: 73 07
-1A36: B0 0D
-1A38: 50 05
-1A3A: 03 00
-1A3C: 50 05
-1A3E: 82 03
-1A40: 64 07
-1A42: 50 05
-1A44: 82 03
-1A46: 7F 07
-1A48: 50 05
-1A4A: 03 00
-1A4C: E5 09
-1A4E: 7D 05
-1A50: 58 1A
-1A52: A5 0D
-1A54: 6B 05
-1A56: 42 1A
-1A58: 50 05
-1A5A: 00 03
-1A5C: 0F 0B
-1A5E: 50 05
-1A60: 40 00
-1A62: 39 0A
-1A64: 0F 0B
-1A66: 17 10
-1A68: 5C 05
+1A31: 22 D8 19 | ent _func_DISKADDR
+1A34: 73 07    | _func_at
+1A36: B0 0D    | _func_RBPexclamation
+1A38: 50 05    | _func_lit
+1A3A: 03 00    | 0x0003
+1A3C: 50 05    | _func_lit 
+1A3E: 82 03    | 0x0382
+1A40: 64 07    | _func_Cexclamation
+1A42: 50 05    | _func_lit
+1A44: 82 03    | 0x0382
+1A46: 7F 07    | _func_Cat
+1A48: 50 05    | _func_lit
+1A4A: 03 00    | 0x0003
+1A4C: E5 09    | _func_equals
+1A4E: 7D 05    | _func_qbranch
+1A50: 58 1A    | 0x1A58
+1A52: A5 0D    | _func_TICK
+1A54: 6B 05    | _func_branch
+1A56: 42 1A    | 0x1A42
+1A58: 50 05    | _func_lit
+1A5A: 00 03    | 0x0300
+1A5C: 0F 0B    | _func_SCRATCH
+1A5E: 50 05    | _func_lit
+1A60: 40 00    | 0x0040
+1A62: 39 0A    | _func_MOVE
+1A64: 0F 0B    | _func_SCRATCH
+1A66: 17 10    | _func_TYPE
+1A68: 5C 05    | _func_EXIT
 
 1A6A: 00
 _ascii_DISKWS:
 1A6B: 44 49 53 4B 57 53 00 00 31 1A
-1A75: 22 D8 19 | ent _
-1A78: 73 07
-1A7A: B0 0D
-1A7C: 50 05
-1A7E: 80 03
-1A80: 38 07 50 05 00 03 50 05 80 00 39 0A 50 05 05 00
-1A90: 50 05 82 03 64 07 50 05 82 03 7F 07 50 05 05 00
-1AA0: E5 09 7D 05 AC 1A A5 0D 6B 05 96 1A 5C 05 00 44
-1AB0: 49 53 4B 52 53 00 00 75 1A 22 D8 19 73 07 B0 0D
-1AC0: 50 05 80 03 38 07 50 05 04 00 50 05 82 03 64 07
-1AD0: 50 05 82 03 7F 07 50 05 04 00 E5 09 7D 05 E6 1A
-1AE0: A5 0D 6B 05 D0 1A 50 05 00 03 8D 06 50 05 80 00
-1AF0: 39 0A 5C 05 00 53 41 56 45 22 00 00 B9 1A 22 EB
-1B00: 19 50 05 00 05 E0 10 50 05 81 04 9C 07 50 05 07
-1B10: 00 60 08 50 05 00 00 8D 05 2D 1B 49 06 1D 06 75
-1B20: 1A 50 05 80 00 8F 07 BF 05 1B 1B 14 06 5C 05 00
+_func_DISKWS:
+1A75: 22 D8 19 | ent _func_DISKADDR
+1A78: 73 07    | _func_at
+1A7A: B0 0D    | _func_RBPexclamation
+1A7C: 50 05    | _func_lit
+1A7E: 80 03    | 0x0380
+1A80: 38 07    | _func_exclamation
+1A82: 50 05    | _func_lit
+1A84: 00 03    | 0x0300
+1A86: 50 05    | _func_lit
+1A88: 80 00    | 0x0080
+1A8A: 39 0A    | _func_MOVE
+1A8C: 50 05    | _func_lit
+1A8E: 05 00    | 0x0005
+1A90: 50 05    | _func_lit
+1A92: 82 03    | 0x0382
+1A94: 64 07    | _func_Cexclamation
+1A96: 50 05    | _func_lit
+1A98: 82 03    | 0x0382
+1A9A: 7F 07    | _func_Cat
+1A9C: 50 05    | _func_lit
+1A9E: 05 00    | 0x0005
+1AA0: E5 09    | _func_equals
+1AA2: 7D 05    | _func_qbranch
+1AA4: AC 1A    | 0x1AAC
+1AA6: A5 0D    | _func_TICK
+1AA8: 6B 05    | _func_branch
+1AAA: 96 1A    | 0x1A96
+1AAC: 5C 05    | _func_EXIT
+
+1AAE: 00
+_ascii_DISKRS:
+1AAF: 44 49 53 4B 52 53 00 00 75 1A
+_func_DISKRS:
+1AB9: 22 D8 19 | ent _func_DISKADDR
+1ABC: 73 07    | _func_at
+1ABE: B0 0D    | _func_RBPexclamation
+1AC0: 50 05    | _func_lit
+1AC2: 80 03    | 0x0380
+1AC4: 38 07    | _func_exclamation
+1AC6: 50 05    | _func_lit
+1AC8: 04 00    | 0x0004
+1ACA: 50 05    | _func_lit
+1ACC: 82 03    | 0x0382
+1ACE: 64 07    | _func_Cexclamation
+1AD0: 50 05    | _func_lit
+1AD2: 82 03    | 0x0382
+1AD4: 7F 07    | _func_Cat
+1AD6: 50 05    | _func_lit
+1AD8: 04 00    | 0x0004
+1ADA: E5 09    | _func_equals
+1ADC: 7D 05    | _func_qbranch
+1ADE: E6 1A    | 0x1AE6
+1AE0: A5 0D    | _func_TICK
+1AE2: 6B 05    | _func_branch
+1AE4: D0 1A    | 0x1AD0
+1AE6: 50 05    | _func_lit
+1AE8: 00 03    | 0x0300
+1AEA: 8D 06    | _func_SWAP
+1AEC: 50 05    | _func_lit
+1AEE: 80 00    | 0x0080
+1AF0: 39 0A    | _func_MOVE
+1AF2: 5C 05    | _func_EXIT
+
+1AF4: 00
+_ascii_SAVE:
+1AF5: 53 41 56 45 22 00 00 B9 1A
+_func_SAVE:
+1AFE: 22 EB 19 | ent _func_DISKNAME
+1B01: 50 05
+1B03: 00 05
+1B05: E0 10
+1B07: 50 05
+1B09: 81 04
+1B0B: 9C 07
+1B0D: 50 05
+1B0F: 07 00
+1B11: 60 08
+1B13: 50 05
+1B15: 00 00
+1B17: 8D 05
+1B19: 2D 1B
+1B1B: 49 06
+1B1D: 1D 06
+1B1F: 75 1A
+1B21: 50 05
+1B23: 80 00
+1B25: 8F 07 BF 05 1B 1B 14 06 5C 05 00
 1B30: 28 62 6C 6B 62 75 66 29 00 00 FE 1A 22 34 05 00
 1B40: 00 00 28 62 6C 6B 6E 6F 29 00 00 3C 1B 22 34 05
 1B50: 00 00 00 28 62 6C 6B 75 70 29 00 00 4D 1B 22 34

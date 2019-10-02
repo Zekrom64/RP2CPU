@@ -1,0 +1,140 @@
+<mcfs_boot.bin>
+
+0000: -- --    | // Boot disk drive redbus ID
+
+0500: 18       | clc
+0501: FB       | xce
+0502: E2 30    | sep 0x30
+0504: EF 02    | mmu 0x02
+0506: A2 98    | ldx 0x98
+0508: C2 30    | rep 0x30
+
+_reloc_loop:                      // Relocate 0x592-0x6C1 to 0x100
+050A: BD 92 05 | lda (0x0592+X)
+050D: 9D 00 01 | sta (0x0100+X)
+0510: BD 29 06 | lda (0x0629+X)
+0513: 9D 00 02 | sta (0x0200+X)
+0516: CA       | dex
+0517: CA       | dex
+0518: 10 F0    | bpl _reloc_loop
+
+051A: A9 69 05 | lda _str_nodisk
+051D: 8D 5D 01 | sta (0x015D)     // rel. 0x6EF
+0520: E2 30    | sep 0x30
+0522: A2 13    | ldx 0x13
+0524: 20 54 01 | jsr REL(_func_printstr)
+0527: AD 7A 05 | lda (0x057A)
+052A: 0D 7A 05 | ora (0x057A)
+052D: F0 30    | beq 0x30
+052F: A9 07    | lda 0x07
+0531: 85 09    | sta [0x09]
+0533: 64 08    | stz [0x08]
+0535: B2 08    | lda ([0x08])
+0537: AA       | tax
+0538: A9 92    | lda 0x92
+053A: 92 08    | sta ([0x08])
+053C: D2 08    | cmp ([0x08])
+053E: D0 10    | bne 0x10
+0540: 0A       | asl A
+0541: 92 08    | sta ([0x08])
+0543: D2 08    | cmp ([0x08])
+0545: D0 09    | bne 0x09
+0547: 8A       | txa
+0548: 92 08    | sta ([0x08])
+054A: E6 09    | inc [0x09]
+054C: D0 E7    | bne 0xE7
+054E: C6 09    | dec [0x09]
+0550: A5 00    | lda [0x00]
+0552: EF 00    | mmu 0x00
+0554: C2 30    | rep 0x30
+0556: A9 00 01 | lda 0x0100
+0559: 8D 5D 01 | sta (0x015D)
+055C: 4C 00 02 | jmp REL(0x692)
+
+055F: A2 00 20 | ldx 0x2000
+0562: 54 01    | rei [0x01]
+0564: A2 29 4C | ldx 0x4C29
+0567: 86 02    | stx [0x02]
+
+_str_nodisk:   | "Non bootable disë"
+0569: 4E 6F 6E 20 62 6F 6F 74 61 62 6C 65 20 64 69 73 EB
+
+_var_bootsec:
+057A: 10    | 0x10
+057B: 00    | 0x00
+
+_str_started:  | "MCFS boot code starteä"
+057C: 4D 43 46 53 20 62 6F 6F 74 20 63 6F 64 65 20 73 74 61 72 74 65 E4
+
+_str_reboot:   | "Press any key to rebooô"
+0592: 50 72 65 73 73 20 61 6E 79 20 6B 65 79 20 74 6F 20 72 65 62 6F 6F F4
+
+_str_diskerr:  | "No drive/Timeouô"
+05A9: 4E 6F 20 64 72 69 76 65 2F 54 69 6D 65 6F 75 F4
+
+_str_nodisk:   | "No disk/Reaä"
+05B9: 4E 6F 20 64 69 73 6B 2F 52 65 61 E4
+
+_str_nomem:    | "Out of memorù"
+05C5: 4F 75 74 20 6F 66 20 6D 65 6D 6F 72 F9
+
+_str_error:    | " erroò"
+05D2: 20 65 72 72 6F F2
+
+05D8: 4F 6B AE 
+
+_func_mapdrive:
+05DB: EF 80    | mmu 0x80
+05DD: 85 06    | sta [0x06]
+05DF: A5 01    | lda [0x01]
+05E1: EF 00    | mmu 0x00
+05E3: 60       | rts
+
+05E4: 38 24
+
+_func_printstr
+05E6: 18       | clc
+05E7: 08       | php
+05E8: 20 49 01 | jsr REL(_func_mapdrive)
+05EB: AC 01 03 | ldy (0x0301)
+05EE: BD 69 05 | lda (_str_nodisk+X)
+05F1: 08       | php
+05F2: 29 7F    | and 0x7F
+05F4: 99 10 03 | sta (0x0301+Y)
+05F7: 28       | plp
+05F8: 30 04    | bmi 0x04
+05FA: C8       | iny
+05FB: E8       | inx
+05FC: D0 F0    | bne 0xF0
+05FE: 28       | plp
+05FF: B0 0B    | bcs 0x0B
+0601: EE 00 03 | inc (0x0300)
+0604: EE 02 03 | inc (0x0302)
+0607: 9C 01 03 | stz (0x0301)
+060A: 80 07    | bra 0x07
+060C: 98       | tya
+060D: 6D 01 03 | adc (0x0301)
+0610: 8D 01 03 | sta (0x0301)
+0613: A5 06    | lda [0x06]
+0615: EF 00    | mmu 0x00
+0617: 60       | rts
+
+0618: 20 49 01 9C 04 03 9C 05
+0620: 03 CB AD 05 03 F0 FA 80 EA
+
+0629: 64 0A 64 0C AD 7A 05
+0630: 8D 80 03 CD 80 03 E2 30 D0 69 A9 04 A2 05 8D 82
+0640: 03 CD 82 03 D0 06 CB CA 10 F7 80 57 AD 82 03 30
+0650: 4F A9 7E AC 01 03 C8 5A D0 03 AD 00 03 85 0A C2
+0660: 20 A0 00 24 0C 30 0F C6 0C AD 02 03 C5 08 B0 2B
+0670: 3A 3A 85 04 C8 C8 B9 02 03 91 04 C8 C8 C4 0A 90
+0680: F5 98 18 65 04 85 04 C5 08 B0 10 AD 00 03 7A D0
+0690: 9F
+0691: E2 30    | sep 0x30
+0693: A2 46    | ldx 0x40
+0695: 20 54 01 | jsr 0x0154
+0698: 4C 00 05 | jmp 0x0500 // Jump to loaded program
+
+069B: E2 30 A2 33 2C
+06A0: A2 27 2C A2 17 20 52 01 A2 40 20 54 01 A2 00 20
+06B0: 54 01 20 86 01 4C 00 04
