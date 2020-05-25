@@ -1,0 +1,500 @@
+
+Instruction:
+	Operation:
+		General ALU:
+			ALU Operation: ...
+		Special:
+			NXT
+			NXA
+			ENT
+			PHx/RHx
+			PLx/RLx
+			PER/RER
+			PEI/REI
+			PEA/REA
+			Txx
+			BRK
+			WAI
+			REP/SEP
+			SEx/CLx
+			STP
+			XBA
+			XCE
+			ZEA/SEA
+			MMU
+			BRA
+			Bxx
+			JMP
+			JSR
+			RET/RTI
+			NOP
+			STZ
+
+ALU Operations:
+	NOP (OR 0)
+	ADD (Addressing add)
+	SUB (Addressing subtract)
+	ADC (Arithmetic add)
+	SBC (Arithmetic subtract)
+	ASR
+	SHL
+	ROR
+	ROL
+	TSB
+	TRB
+	OR
+	AND
+	XOR
+	BIT
+	MUL
+	DIV
+	
+ALU Flag Mode:
+	None    (........) // No flags
+	AddSub  (mm....mm) // ADC/SUB
+	CompBsh (m.....mm) // CMP/CPx/ASR/SHL/ROR/ROL
+	Logic   (m.....m.) // AND/EOR/ORA/DEC/DEx/INC/INx/LDx/PLx/RLx
+	Bit     (mm....m.) // BIT
+	TestBit (......m.) // TSB/TRB
+
+uCode:
+	Clocking
+		High - Set up bus, process data
+		Low - Read/write bus
+		
+		uCode Jump ROM has a clocked address input
+		The initial instruction is stored
+		If an MMU uOp is executed, an opcode is read and ORd with 0x100 to get an address in high jump ROM
+		The new address is then jumped to
+		
+	Targets:	
+		A,D,X,Y,S,R,I,PC
+		FLAG,TEMP,CONS
+		BINP,BOUT,BADR
+		MBRK,MINS,MTRG,MSRC
+		
+		RBDV,RBWI,RBWO,MPOR,
+		INSN_TRG,INSN_SRC,
+		
+		BOUT and BADR may be loaded independently of the ALU operation to simplify bus accesses
+		FLAG contains an inverted copy in its upper 8 bits
+			Literals are FZ FC FS FV FI FD
+		MINS is a special register that is loaded with an MMU operation
+		MTRG and MSRC are special targets that are the source and targets in an MMU operation
+		RBDV, RBWI, RBWO, and MPOR are indirectly accessed by MTRG and MSRC
+
+	NEXT operations are handled on the low clock
+	EXTEND will jump over the next uOp if the operation is only 8 bits
+	CREAD will suppress the current bus operation and skip the next uOp if it doesn't read memory
+	CWRITE will perform a NEXT before the bus operation if the operation doesn't write back to memory
+	CEXTND will perform a NEXT after the bus operation if the operation is only 8 bits
+	CSTORE will only store the result of the ALU if the FLAGS register masked with CONS is non-zero
+		Can be used with the literals CC CS ZC ZS SC SS VC VS
+	RINS will jump to the uCode address of the read instruction in the jump table
+	SIGNX will sign extend the first 8-bit value passed to the ALU
+		
+// NOP
+0000H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++
+0000L: RINS                              // RINS
+// BRK
+0001H: BOUT = ALU_ADD PC 1               // BOUT = PC + 2  // Compute address to push
+0001L: NOOP                              // ...
+0002H: S,BADR = ALU_SUB S 1              // S,BADR = S - 1 // Push address
+0002L: WHI                               // <= BOUT_HI
+0003H: S,BADR = ALU_SUB S 1              // S,BADR = S - 1
+0003L: WLO                               // <= BOUT_LO
+0004H: S,BADR = ALU_SUB S 1; BOUT = FLAG // S,BADR = S - 1; BOUT = FLAG // Push flags
+0004L: WLO                               // <= BOUT_LO
+0005H: PC = ALU_NOP MBRK                 // PC = MBRK      // Jump to BRK address
+0005L: NEXT                              // NEXT
+// NXT
+0006H: BADR = I; I = ALU_ADD I 1;        // BADR = I; I++ // Read jump address
+0006L: RLO                               // => BINP_LO
+0007H: BADR = I; I = ALU_ADD I 1;        // BADR = I; I++
+0007L: RHI                               // => BINP_HI
+0008H: PC = ALU_NOP BINP                 // PC = BINP     // Jump
+0008L: NEXT                              // NEXT
+// PHP
+0009H: S,BADR = ALU_SUB S 1; BOUT = FLAG // BOUT = FLAG; S,BADR = S - 1
+0009L: WLO; NEXT                         // <= BOUT_LO; NEXT
+// xHx
+000AH: BOUT = INSN_SRC; INSN_TRG,BADR = ALU_SUB INSN_TRG 1 // BOUT = INSN_SRC; INSN_TRG,BADR = INSN_TRG - 1 // Push instruction source to target
+000AL: WHI; EXTEND                       // <= BOUT_HI; EXTEND
+000BH: INSN_TRG,BADR = ALU_SUB INSN_TRG 1              // INSN_TRG,BADR = INSN_TRG - 1
+000BL: WLO; NEXT                         // <= BOUT_LO; NEXT
+// Bxx
+000CH: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read branch offset
+000CL: RLO                               // => BINP_LO
+000DH: PC = ALU_ADD BINP PC; SIGNX; CSTORE INSN_CC // PC += signx(BINP) if SC
+000DL: NEXT                              // NEXT
+// CLC
+000EH: FLAG = ALU_AND FLAG ~FC           // FLAG &= ~FC
+000EL: NEXT                              // NEXT
+// JSR
+000FH: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read subroutine address
+000FL: RLO                               // => BINP_LO
+0010H: BADR = PC; BOUT = PC; PC = ALU_ADD PC 1 // BADR,BOUT = PC; PC++ // Prepare return address
+0010L: RHI                               // => BINP_HI
+0011H: BADR,S = ALU_SUB S 1              // BADR,S = S - 1  // Push return address
+0011L: WHI                               // <= BOUT_HI
+0012H: BADR,S = ALU_SUB S 1              // BADR,S = S - 1
+0012L: WLO                               // <= BOUT_LO
+0013H: PC = ALU_NOP BIN                  // PC = BINP
+0013L: NEXT                              // NEXT
+// ENT
+0014H: BOUT = I; R,BADR = ALU_SUB R 1    // BOUT = I; R,BADR = R - 1 // Push I
+0014L: WHI                               // <= BOUT_HI
+0015H: R,BADR = ALU_SUB R 1              // R,BADR = R - 1 
+0015L: WLO                               // <= BOUT_LO
+0016H: BADR = PC; I = ALU_ADD PC 2       // BADR = PC; I = PC + 2 // Set I to PC + 2, read jump address
+0016L: RLO                               // => BINP_LO
+0017H: BADR = ALU_ADD BADR 1             // BADR++
+0017L: RHI                               // => BINP_HI
+0018H: PC = ALU_NOP BINP                 // PC = BINP
+0018L: NEXT                              // NEXT
+// PLP
+0019H: BADR = S; S = ALU_ADD S 1         // BADR = S; S++
+0019L: RLO                               // => BINP_LO
+001AH: FLAG = BINP;                      // FLAG = BINP;
+001AL: NEXT                              // NEXT
+// xLx
+001BH: BADR = INSN_SRC; INSN_SRC = ALU_ADD INSN_SRC 1  // BADR = INSN_SRC; INSN_SRC++ // Pull from source to instruction target
+001BL: RLO; EXTEND                       // => BINP_LO; EXTEND
+001CH: BADR = INSN_SRC; INSN_SRC = ALU_ADD INSN_SRC 1  // BADR = INSN_SRC; INSN_SRC++
+001CL: RHI                               // => BINP_HI
+001DH: INSN_TRG = ALU_NOP BINP           // INSN_TRG = BINP
+001DL: NEXT                              // NEXT
+// SEC
+001EH: FLAG = ALU_OR FLAG FC             // FLAG |= FC
+001EL: NEXT                              // NEXT
+// RTI
+001FH: BADR = S; S = ALU_ADD S 1         // BADR = S; S++ // Pull processor flags
+001FL: RLO                               // => BINP_LO
+0020H: BADR = S; FLAG = ALU_NOP BINP     // BADR = S; FLAG = BINP
+0020L: RLO                               // => BINP_LO // Pull return address
+0021H: BADR,S = ALU_ADD S 1              // BADR,S = S + 1
+0021L: RHI                               // => BINP_HI
+0022H: S = ALU_ADD S 1                   // S++
+0022L: NOOP                              // ...
+0023H: PC = ALU_NOP BINP                 // PC = BINP
+0023L: NEXT                              // NEXT
+// NXA
+0024H: BADR = I; I = ALU_ADD I 1         // BADR = I; I++ // Read A and increment I
+0024L: RLO; EXTEND                       // => BINP_LO; EXTEND
+0025H: BADR = I; I = ALU_ADD I 1         // BADR = I; I++
+0025L: RHI                               // => BINP_HI
+0026H: A = ALU_NOP BINP                  // A = BINP
+0026L: NEXT                              // NEXT
+// xEA
+0027H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read effective address
+0027L: RLO                               // => BINP_LO
+0028H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++
+0028L: RHI                               // => BINP_HI
+0029H: BOUT = BINP; BADR,INSN_TRG = ALU_SUB INSN_TRG 1 // BOUT = BINP; BADR,INSN_TRG = INSN_TRG - 1 // Push effective address
+0029L: WHI                               // <= BOUT_HI
+002AL: BADR,INSN_TRG = ALU_SUB INSN_TRG 1 // BADR,INSN_TRG = INSN_TRG - 1
+002AH: WLO; NEXT                         // <= BOUT_LO; NEXT
+// JMP Abs
+002BH: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read jump address
+002BL: RLO                               // => BINP_LO
+002CH: BADR = PC                         // BADR = PC
+002CL: RHI                               // => BINP_HI
+002DH: PC = BINP                         // PC = BINP
+002DL: NEXT                              // NEXT
+// xEI
+002EH: BADR = PC; PC = ALU_ADD PC 1      // PADR = PC; PC++ // Read zero page address
+002EL: RLO                               // => BINP_LO
+002FH: BADR = BINP; TEMP = ALU_ADD BINP 1 // BADR = BINP; TEMP = BINP + 1 // Read value
+002FL: RLO                               // => BINP_LO
+0030H: BADR = TEMP                       // BADR = TEMP
+0030L: RHI                               // => BINP_HI
+0031H: BADR,INSN_TRG = ALU_SUB INSN_TRG 1 // BADR,INSN_TRG = INSN_TRG - 1 // Push value
+0031L: WHI                               // <= BINP_HI
+0032H: BADR,INSN_TRG = ALU_SUB INSN_TRG 1 // BADR,INSN_TRG = INSN_TRG - 1
+0032L: WLO; NEXT                         // <= BINP_LO; NEXT
+// CLI
+0033H: FLAG = ALU_AND FLAG ~FI           // FLAG &= ~FI
+0033L: NEXT                              // NEXT
+// Txx
+//0034H: INSN_TRG = ALU_NOP INSN_SRC       // INSN_TRG = INSN_SRC
+//0034L: NEXT                              // NEXT
+// RTS
+0035H: BADR = S; S = ALU_ADD S 1         // BADR = S; S++
+0035L: RLO                               // => BINP_LO
+0036H: BADR = S; S = ALU_ADD S 1         // BADR = S; S++
+0036L: RHI                               // => BINP_HI
+0037H: PC = ALU_ADD BINP 1               // PC = BINP + 1
+0037L: NEXT                              // NEXT
+// xER
+0038H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++
+0038L: RLO                               // => BINP_LO
+0039H: BOUT = ALU_ADD BINP PC            // BOUT = BINP + PC
+0039L: NOOP                              // ...
+003AH: BADR,S = ALU_SUB S 1              // BADR,S = S - 1
+003AL: WHI                               // <= BOUT_HI
+003BH: BADR,S = ALU_SUB S 1              // BADR,S = S - 1
+003BL: WLO; NEXT                         // <= BOUT_LO; NEXT
+// STZ Zp
+//003CH: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ 
+//003CL: RLO                               // => BINP_LO
+//003DH: BADR = BINP; BOUT = 0             // BADR = BINP; BOUT = 0
+//003DL: WLO; CEXTND                       // <= BOUT_LO; CEXTND
+//003EH: BADR = ALU_ADD BINP 1             // BADR = BINP + 1
+//003EL: WLO; NEXT                         // <= BOUT_LO; NEXT
+// JMP (Ind)
+003FH: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++
+003FL: RLO                               // => BINP_LO
+0040H: BADR = BINP                       // BADR = BINP
+0040L: RLO                               // => BINP_LO
+0041H: BADR = ALU_ADD BADR 1             // BADR++
+0041L: RHI                               // => BINP_HI
+0042H: PC = BINP                         // PC = BINP
+0042L: NEXT                              // NEXT
+// SEI
+0043H: FLAG = ALU_OR FLAG FI             // FLAG |= FI
+0043L: NEXT                              // NEXT
+// JMP (Abs,X)
+0044H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++
+0044L: RLO                               // => BINP_LO
+0045H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++
+0045L: RHI                               // => BINP_HI
+0046H: BADR = ALU_ADD BINP X             // BADR = BINP + X
+0046L: RLO                               // => BINP_LO
+0047H: BADR = ALU_ADD BADR 1             // BADR++
+0047L: RHI                               // => BINP_HI
+0048H: PC = ALU_NOP BINP                 // PC = BINP
+0048L: NEXT                              // NEXT
+// STZ Zp,X
+//0049H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++
+//0049L: RLO                               // => BINP_LO
+//004AH: BOUT = 0; BADR = ALU_ADD BINP X   // BOUT = 0; BADR = BINP + X
+//004AL: WLO; CEXTND                       // <= BOUT_LO; CEXTND
+//004BH: BADR = ALU_ADD BADR 1             // BADR++
+//004BL: WLO; NEXT                         // <= BOUT_LO; NEXT
+// BRA Rel
+004CH: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++
+004CL: RLO                               // => BINP_LO
+004DH: PC = ALU_ADD BINP PC; SIGNX       // PC += signx(BINP)
+004DL: NEXT                              // NEXT
+// ZEA
+004EH: D = 0                             // D = 0
+004EL: NEXT                              // NEXT
+// SEA
+004FH: D = ALU_SIGN A                    // D = sign(A)
+004FL: NEXT                              // NEXT
+// CLV
+0050H: FLAG = ALU_AND FLAG ~FV           // FLAG &= ~FV
+0050L: NEXT                              // NEXT
+// REP #
+0051H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++
+0051L: RLO                               // => BINP_LO
+0052H: FLAG = ALU_TRB FLAG BINP          // FLAG &= ~BINP
+0052L: NEXT                              //  NEXT
+// WAI
+// Handled at hardware level
+// CLD
+0053H: FLAG = ALU_AND FLAG ~FD           // FLAG &= ~FD
+0053L: NEXT                              // NEXT
+// STP
+// Handled at hardware level
+// SEP #
+0054H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++
+0054L: RLO                               // => BINP_LO
+0055H: FLAG = ALU_OR FLAG BINP           // FLAG |= BINP
+0055L: NEXT                              // NEXT
+// XBA
+0056H: A = ALU_XBA A                     // XBA
+0056L: NEXT                              // NEXT
+// MMU
+0057H: BADR = PC: PC = ALU_ADD PC 1      // BADR = PC; PC++
+0057L: RLO                               // => BINP_LO
+0058H: MINS = ALU_NOP BINP               // MINS = BINP
+0058L: NOOP                              // ...
+0059H: MTRG = ALU_NOP MSRC               // MTRG = MSRC
+0059L: NEXT                              // NEXT
+// SED
+005AH: FLAG = ALU_OR FLAG FD             // FLAG |= FD
+005AL: NEXT                              // NEXT
+// XCE
+005BH: A = ALU_XCE A                     // XCE
+005BL: NEXT                              // NEXT
+
+// xxx (Ind,X)
+XXX0H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read indirect byte
+XXX0L: RLO                               // => BINP_LO
+XXX1H: BADR = ALU_ADD BINP X             // BADR = BINP + X // Add X
+XXX1L: RLO                               // => BINP_LO      // Read target address
+XXX2H: BADR = ALU_ADD BADR 1             // BADR++
+XXX2L: RHI                               // => BINP_HI
+XXX3H: BADR = BINP; TEMP = ALU_NOP BINP  // TEMP,BADR = BINP;
+XXX3L: CREAD; RLO; EXTEND                // CREAD; => BINP_LO; EXTEND // Read low byte
+XXX4H: BADR = ALU_ADD BINP 1             // BADR++
+XXX4L: RHI                               // => BINP_HI         // Read high byte
+XXX5H: BADR = TEMP; INSN_TRG = INSN_ALU INSN_TRG INSN_SRC; INSN_FLAGS // BADR = TEMP; TARGET = ALU_OP TARGET SOURCE; FLAGS
+XXX5L: CWRITE; WLO; CEXTND               // CWRITE; <= BOUT_LO; CEXTND // Write low byte
+XXX6H: BADR = ALU_ADD BADR 1             // BADR++
+XXX6L: WHI; NEXT                         // <= BOUT_HI; NEXT           // Write high byte
+// xxx r,S
+XXX0H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read offset
+XXX0L: RLO                               // => BINP_LO
+XXX1H: TEMP,BADR = ALU_ADD BINP S        // TEMP,BADR = BINP + S // Add S
+XXX1L: CREAD; RLO; EXTEND                // CREAD; => BINP_LO; EXTEND // Read low byte
+XXX2H: BADR = ALU_ADD BADR 1             // BADR++
+XXX2L: RHI                               // => BINP_HI // Read high byte
+XXX3H: BADR = TEMP; INSN_TRG = INSN_ALU INSN_TRG INSN_SRC; INSN_FLAGS // BADR = TEMP; TARGET = ALU_OP TARGET SOURCE; FLAGS 
+XXX3L: CWRITE; WLO; CEXTND               // CWRITE; <= BOUT_LO; CEXTND // Write low byte
+XXX4H: BADR = ALU_ADD BADR 1             // BADR++
+XXX4L: WHI; NEXT                         // <= BOUT_HI; NEXT // Write high byte
+// xxx Zp
+XXX0H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read zero page address
+XXX0L: RLO                               // => BINP_LO
+XXX1H: TEMP,BADR = ALU_NOP BINP          // TEMP,BADR = BINP
+XXX1L: CREAD; RLO; EXTEND                // CREAD; => BINP_LO; EXTEND // Read low byte
+XXX2H: BADR = ALU_ADD BADR 1             // BADR++
+XXX2L: RHI                               // => BINP_HI // Read high byte
+XXX3H: BADR = TEMP; INSN_TRG = INSN_ALU INSN_TRG INSN_SRC; INSN_FLAGS // BADR = TEMP; TARGET = ALU_OP TARGET SOURCE; FLAGS
+XXX3L: CWRITE WLO; CEXTND                // CWRITE <= BOUT_LO; CEXTND // Write low byte
+XXX4H: BADR = ALU_ADD BADR 1             // BADR++
+XXX4L: WHI; NEXT                         // <= BOUT_HI; NEXT
+// xxx r,R
+XXX0H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read offset
+XXX0L: RLO                               // => BINP_LO
+XXX1H: TEMP,BADR = ALU_ADD BINP R        // TEMP,BADR = BINP + R // Add R
+XXX1L: CREAD; RLO; EXTEND                // CREAD; => BINP_LO; EXTEND // Read low byte
+XXX2H: BADR = ALU_ADD BADR 1             // BADR++
+XXX2L: RHI                               // => BINP_HI // Read high byte
+XXX3H: BADR = TEMP; INSN_TRG = INSN_ALU INSN_TRG INSN_SRC; INSN_FLAGS // BADR = TEMP; TARGET = ALU_OP TARGET SOURCE; FLAGS 
+XXX3L: CWRITE; WLO; CEXTND               // CWRITE; <= BOUT_LO; CEXTND // Write low byte
+XXX4H: BADR = ALU_ADD BADR 1             // BADR++
+XXX4L: WHI; NEXT                         // <= BOUT_HI; NEXT // Write high byte
+// xxx #
+XXX0H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read immediate
+XXX0L: RLO; EXTEND                       // => BINP_LO; EXTEND
+XXX1H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++
+XXX1L: RHI                               // => BINP_HI
+XXX2H: INSN_TRG = INSN_ALU INSN_TRG INSN_SRC; INSN_FLAGS // TARGET = ALU_OP TARGET SOURCE; FLAGS 
+XXX2L: NEXT                              // NEXT
+// xxx r
+XXX0H: INSN_TRG = INSN_ALU INSN_TRG; INSN_FLAGS // TARGET = ALU_OP TARGET; FLAGS 
+XXX0L: NEXT                              // NEXT
+// xxx Abs
+XXX0H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read address
+XXX0L: RLO                               // => BINP_LO
+XXX1H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++
+XXX1L: RHI                               // => BINP_HI
+XXX2H: BADR,TEMP = ALU_NOP BINP          // BADR,TEMP = BINP // Read value
+XXX2L: RLO; EXTEND                       // => BINP_LO
+XXX3H: BADR = ALU_ADD BADR 1             // BADR++
+XXX3L: RHI                               // => BINP_HI
+XXX4H: BADR = TEMP; INSN_TRG = INSN_ALU INSN_TRG INSN_SRC; INSN_FLAGS // BADR = TEMP; TARGET = ALU_OP TARGET SOURCE; FLAGS
+XXX4L: CWRITE; WLO; CEXTND               // CWRITE; <= BOUT_LO; CEXTND // Write low byte
+XXX5H: BADR = ALU_ADD BADR 1             // BADR++
+XXX5L: WHI; NEXT                         // <= BOUT_HI; NEXT
+// xxx (Ind),Y
+XXX0H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read indirect byte
+XXX0L: RLO                               // => BINP_LO
+XXX1H: BADR = ALU_NOP BINP               // BADR = BINP
+XXX1L: RLO                               // => BINP_LO      // Read target address
+XXX2H: BADR = ALU_ADD BADR 1             // BADR++
+XXX2L: RHI                               // => BINP_HI
+XXX3H: TEMP,BADR = ALU_ADD BINP Y        // TEMP,BADR = BINP + Y;
+XXX3L: CREAD; RLO; EXTEND                // CREAD; => BINP_LO; EXTEND // Read low byte
+XXX4H: BADR = ALU_ADD BINP 1             // BADR++
+XXX4L: RHI                               // => BINP_HI         // Read high byte
+XXX5H: BADR = TEMP; INSN_TRG = INSN_ALU INSN_TRG INSN_SRC; INSN_FLAGS // BADR = TEMP; TARGET = ALU_OP TARGET SOURCE; FLAGS
+XXX5L: CWRITE; WLO; CEXTND               // CWRITE; <= BOUT_LO; CEXTND // Write low byte
+XXX6H: BADR = ALU_ADD BADR 1             // BADR++
+XXX6L: WHI; NEXT                         // <= BOUT_HI; NEXT           // Write high byte
+// xxx (Ind)
+XXX0H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read indirect byte
+XXX0L: RLO                               // => BINP_LO
+XXX1H: BADR = ALU_NOP BINP               // BADR = BINP
+XXX1L: RLO                               // => BINP_LO      // Read target address
+XXX2H: BADR = ALU_ADD BADR 1             // BADR++
+XXX2L: RHI                               // => BINP_HI
+XXX3H: BADR = BINP; TEMP = ALU_NOP BINP  // TEMP,BADR = BINP;
+XXX3L: CREAD; RLO; EXTEND                // CREAD; => BINP_LO; EXTEND // Read low byte
+XXX4H: BADR = ALU_ADD BINP 1             // BADR++
+XXX4L: RHI                               // => BINP_HI         // Read high byte
+XXX5H: BADR = TEMP; INSN_TRG = INSN_ALU INSN_TRG INSN_SRC; INSN_FLAGS // BADR = TEMP; TARGET = ALU_OP TARGET SOURCE; FLAGS
+XXX5L: CWRITE; WLO; CEXTND               // CWRITE; <= BOUT_LO; CEXTND // Write low byte
+XXX6H: BADR = ALU_ADD BADR 1             // BADR++
+XXX6L: WHI; NEXT                         // <= BOUT_HI; NEXT           // Write high byte
+// xxx (r,S),Y
+XXX0H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read indirect byte
+XXX0L: RLO                               // => BINP_LO
+XXX1H: BADR = ALU_ADD BINP S             // BADR = BINP + S
+XXX1L: RLO                               // => BINP_LO      // Read target address
+XXX2H: BADR = ALU_ADD BADR 1             // BADR++
+XXX2L: RHI                               // => BINP_HI
+XXX3H: BADR,TEMP = ALU_ADD BINP Y        // TEMP,BADR = BINP + Y;
+XXX3L: CREAD; RLO; EXTEND                // CREAD; => BINP_LO; EXTEND // Read low byte
+XXX4H: BADR = ALU_ADD BINP 1             // BADR++
+XXX4L: RHI                               // => BINP_HI         // Read high byte
+XXX5H: BADR = TEMP; INSN_TRG = INSN_ALU INSN_TRG INSN_SRC; INSN_FLAGS // BADR = TEMP; TARGET = ALU_OP TARGET SOURCE; FLAGS
+XXX5L: CWRITE; WLO; CEXTND               // CWRITE; <= BOUT_LO; CEXTND // Write low byte
+XXX6H: BADR = ALU_ADD BADR 1             // BADR++
+XXX6L: WHI; NEXT                         // <= BOUT_HI; NEXT           // Write high byte
+// xxx Zp, X
+XXX0H: BADR = PC: PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read zero page address
+XXX0L: RLO                               // => BINP_LO
+XXX1H: BADR,TEMP = ALU_ADD BINP X        // BADR,TEMP = BINP + X // Read value
+XXX1L: CREAD; RLO; EXTEND                // CREAD; => BINP_LO; EXTEND
+XXX2H: BADR = ALU_ADD BADR 1             // BADR++
+XXX2L: RHI                               // => BINP_HI
+XXX3H: BADR = TEMP; INSN_TRG = INSN_ALU INSN_TRG INSN_SRC; INSN_FLAGS // BADR = TEMP; TARGET = ALU_OP TARGET SOURCE; FLAGS
+XXX3L: CWRITE; WLO; CEXTND               // CWRITE; <= BOUT_LO; CEXTND
+XXX4H: BADR = ALU_ADD BADR 1             // BADR++
+XXX4L: WHI; NEXT                         // <= BOUT_HI; NEXT
+// xxx (r,R),Y
+XXX0H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read indirect byte
+XXX0L: RLO                               // => BINP_LO
+XXX1H: BADR = ALU_ADD BINP R             // BADR = BINP + R
+XXX1L: RLO                               // => BINP_LO      // Read target address
+XXX2H: BADR = ALU_ADD BADR 1             // BADR++
+XXX2L: RHI                               // => BINP_HI
+XXX3H: BADR,TEMP = ALU_ADD BINP Y        // TEMP,BADR = BINP + Y;
+XXX3L: CREAD; RLO; EXTEND                // CREAD; => BINP_LO; EXTEND // Read low byte
+XXX4H: BADR = ALU_ADD BINP 1             // BADR++
+XXX4L: RHI                               // => BINP_HI         // Read high byte
+XXX5H: BADR = TEMP; INSN_TRG = INSN_ALU INSN_TRG INSN_SRC; INSN_FLAGS // BADR = TEMP; TARGET = ALU_OP TARGET SOURCE; FLAGS
+XXX5L: CWRITE; WLO; CEXTND               // CWRITE; <= BOUT_LO; CEXTND // Write low byte
+XXX6H: BADR = ALU_ADD BADR 1             // BADR++
+XXX6L: WHI; NEXT                         // <= BOUT_HI; NEXT           // Write high byte
+// xxx Abs, Y
+XXX0H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read address
+XXX0L: RLO                               // => BINP_LO
+XXX1H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++
+XXX1L: RHI                               // => BINP_HI
+XXX2H: BADR,TEMP = ALU_ADD BINP Y        // BADR,TEMP = BINP + Y // Read value
+XXX2L: RLO; EXTEND                       // => BINP_LO
+XXX3H: BADR = ALU_ADD BADR 1             // BADR++
+XXX3L: RHI                               // => BINP_HI
+XXX4H: BADR = TEMP; INSN_TRG = INSN_ALU INSN_TRG INSN_SRC; INSN_FLAGS // BADR = TEMP; TARGET = ALU_OP TARGET SOURCE; FLAGS
+XXX4L: CWRITE; WLO; CEXTND               // CWRITE; <= BOUT_LO; CEXTND // Write low byte
+XXX5H: BADR = ALU_ADD BADR 1             // BADR++
+XXX5L: WHI; NEXT                         // <= BOUT_HI; NEXT
+// xxx Abs, X
+XXX0H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read address
+XXX0L: RLO                               // => BINP_LO
+XXX1H: BADR = PC; PC = ALU_ADD PC 1      // BADR = PC; PC++
+XXX1L: RHI                               // => BINP_HI
+XXX2H: BADR,TEMP = ALU_ADD BINP X        // BADR,TEMP = BINP + X // Read value
+XXX2L: RLO; EXTEND                       // => BINP_LO
+XXX3H: BADR = ALU_ADD BADR 1             // BADR++
+XXX3L: RHI                               // => BINP_HI
+XXX4H: BADR = TEMP; INSN_TRG = INSN_ALU INSN_TRG INSN_SRC; INSN_FLAGS // BADR = TEMP; TARGET = ALU_OP TARGET SOURCE; FLAGS
+XXX4L: CWRITE; WLO; CEXTND               // CWRITE; <= BOUT_LO; CEXTND // Write low byte
+XXX5H: BADR = ALU_ADD BADR 1             // BADR++
+XXX5L: WHI; NEXT                         // <= BOUT_HI; NEXT
+// xxx Zp, Y
+XXX0H: BADR = PC: PC = ALU_ADD PC 1      // BADR = PC; PC++ // Read zero page address
+XXX0L: RLO                               // => BINP_LO
+XXX1H: BADR,TEMP = ALU_ADD BINP Y        // BADR,TEMP = BINP + Y // Read value
+XXX1L: CREAD; RLO; EXTEND                // CREAD; => BINP_LO; EXTEND
+XXX2H: BADR = ALU_ADD BADR 1             // BADR++
+XXX2L: RHI                               // => BINP_HI
+XXX3H: BADR = TEMP; INSN_TRG = INSN_ALU INSN_TRG INSN_SRC; INSN_FLAGS // BADR = TEMP; TARGET = ALU_OP TARGET SOURCE; FLAGS
+XXX3L: CWRITE; WLO; CEXTND               // CWRITE; <= BOUT_LO; CEXTND
+XXX4H: BADR = ALU_ADD BADR 1             // BADR++
+XXX4L: WHI; NEXT                         // <= BOUT_HI; NEXT
