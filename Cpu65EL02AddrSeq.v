@@ -46,18 +46,18 @@ module Cpu65EL02AddrSeq();
 	localparam MODE_PER = 26;
 	
 	// Sequence indices
-	localparam SEQ_RINSN = 4'd0;
-	localparam SEQ_RADDRL = 4'd1;
-	localparam SEQ_RADDRH = 4'd2;
-	localparam SEQ_RINDRL = 4'd3;
-	localparam SEQ_RINDRH = 4'd4;
-	localparam SEQ_RVALL = 4'd5;
-	localparam SEQ_RVALH = 4'd6;
-	localparam SEQ_WVALL = 4'd7;
-	localparam SEQ_WVALH = 4'd8;
-	localparam SEQ_WVALX = 4'd9;
-	localparam SEQ_END = 4'd0;
-	localparam SEQ_DATA = 4'd15;
+	localparam SEQ_RINSN = 4'd0;  // Read instruction opcode
+	localparam SEQ_RADDRL = 4'd1; // Read low address byte
+	localparam SEQ_RADDRH = 4'd2; // Read high address byte
+	localparam SEQ_RINDRL = 4'd3; // Read low indirect byte
+	localparam SEQ_RINDRH = 4'd4; // Read high indirect byte
+	localparam SEQ_RVALL = 4'd5;  // Read low value byte
+	localparam SEQ_RVALH = 4'd6;  // Read high value byte
+	localparam SEQ_WVALL = 4'd7;  // Write low value byte
+	localparam SEQ_WVALH = 4'd8;  // Write high value byte
+	localparam SEQ_WVALX = 4'd9;  // Write extended value byte
+	localparam SEQ_END = 4'd0;    // Signal address sequencer is finished
+	localparam SEQ_DATA = 4'd15;  // Transfer control to data sequencer
 	
 	// Address register selectors
 	localparam ADDRSEL_NONE = 3'd0; // Selection is ignored, used during instruction fetch
@@ -388,5 +388,9 @@ module Cpu65EL02AddrSeq();
 			endcase
 		end
 	endfunction
+	
+	always @(*) begin
+	
+	end
 
 endmodule

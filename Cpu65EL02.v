@@ -83,6 +83,13 @@ module Cpu65EL02(
 	assign ReadRedbus = readAddress & redbusAccess;
 	assign WriteRedbus = writeAddress & redbusAccess;
 
+	//////////////////////////////
+	// CPU Configuration Inputs //
+	//////////////////////////////
+	input [7:0] ConfigCPUDevice;
+	input [7:0] ConfigDriveDevice;
+	input [7:0] ConfigTermDevice;
+	
 	////////////////////////////
 	// Miscellaneous Controls //
 	////////////////////////////
@@ -280,10 +287,6 @@ module Cpu65EL02(
 			end
 			endcase
 		end
-		// Deassert bus release if it is no longer requested
-		if (BusRelease && !BusRequest) begin
-			BusRelease = 0;
-		end
 	end
 	
 	// Clock negative edge
@@ -325,7 +328,10 @@ module Cpu65EL02(
 				DataOut = insnValueOut[7:0];
 			end
 			endcase
-			
+		end
+		// Deassert bus release if it is no longer requested
+		if (!BusRequest) begin
+			BusRelease = 0;
 		end
 	end
 	
