@@ -10,3 +10,6 @@ output_files/*
 
 # Ignore simulation
 simulation/*
+
+# Ignore certain eclipse files
+eclipse/.recommenders/*
