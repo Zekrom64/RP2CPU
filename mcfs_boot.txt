@@ -5,11 +5,11 @@
 0500: 18       | clc
 0501: FB       | xce
 0502: E2 30    | sep 0x30
-0504: EF 02    | mmu 0x02
+0504: EF 02    | mmu 0x02         // Enable redbus
 0506: A2 98    | ldx 0x98
 0508: C2 30    | rep 0x30
 
-_reloc_loop:                      // Relocate 0x592-0x6C1 to 0x100
+_reloc_loop:                      // Relocate 0x592-0x62A to 0x100 and 0x629-6C1 to 0x200
 050A: BD 92 05 | lda (0x0592+X)
 050D: 9D 00 01 | sta (0x0100+X)
 0510: BD 29 06 | lda (0x0629+X)
@@ -18,50 +18,54 @@ _reloc_loop:                      // Relocate 0x592-0x6C1 to 0x100
 0517: CA       | dex
 0518: 10 F0    | bpl _reloc_loop
 
-051A: A9 69 05 | lda _str_nodisk
-051D: 8D 5D 01 | sta (0x015D)     // rel. 0x6EF
+051A: A9 69 05 | lda _str_nodisk  // Update base ptr in printstr function
+051D: 8D 5D 01 | sta REL(_var_basestr)
 0520: E2 30    | sep 0x30
-0522: A2 13    | ldx 0x13
+0522: A2 13    | ldx 0x13         // Print start message
 0524: 20 54 01 | jsr REL(_func_printstr)
-0527: AD 7A 05 | lda (0x057A)
+0527: AD 7A 05 | lda (0x057A)     // If boot sector is 0, branch to _nodisk
 052A: 0D 7A 05 | ora (0x057A)
-052D: F0 30    | beq 0x30
-052F: A9 07    | lda 0x07
+052D: F0 30    | beq _nodisk
+052F: A9 07    | lda 0x07         // Setup value 0x0700 at 0x0008
 0531: 85 09    | sta [0x09]
 0533: 64 08    | stz [0x08]
+
+_memchk:                          // Check amount of available memory
 0535: B2 08    | lda ([0x08])
-0537: AA       | tax
-0538: A9 92    | lda 0x92
+0537: AA       | tax              // Save byte at page start to X
+0538: A9 92    | lda 0x92         // Save 0x92 to page start and compare back
 053A: 92 08    | sta ([0x08])
 053C: D2 08    | cmp ([0x08])
-053E: D0 10    | bne 0x10
-0540: 0A       | asl A
-0541: 92 08    | sta ([0x08])
+053E: D0 10    | bne _jmpbootload // If not equal, branch out of loop
+0540: 0A       | asl A            // Shift left and repeat store-compare
+0541: 92 08    | sta ([0x08])     
 0543: D2 08    | cmp ([0x08])
-0545: D0 09    | bne 0x09
-0547: 8A       | txa
+0545: D0 09    | bne _jmpbootload // If not equal, branch out of loop
+0547: 8A       | txa              // Restore value at page start
 0548: 92 08    | sta ([0x08])
-054A: E6 09    | inc [0x09]
-054C: D0 E7    | bne 0xE7
-054E: C6 09    | dec [0x09]
-0550: A5 00    | lda [0x00]
+054A: E6 09    | inc [0x09]       // Increment page number
+054C: D0 E7    | bne _memchk      // Loop if not wraparound
+054E: C6 09    | dec [0x09]       // Adjust back if wraparound
+
+_jmpbootload:
+0550: A5 00    | lda [0x00]       // Map disk drive
 0552: EF 00    | mmu 0x00
 0554: C2 30    | rep 0x30
-0556: A9 00 01 | lda 0x0100
-0559: 8D 5D 01 | sta (0x015D)
-055C: 4C 00 02 | jmp REL(0x692)
+0556: A9 00 01 | lda REL(_str_reboot) // Offset base print string to reboot
+0559: 8D 5D 01 | sta REL(_var_basestr)
+055C: 4C 00 02 | jmp REL(_bootload) // Jump to bootloading code
 
-055F: A2 00 20 | ldx 0x2000
-0562: 54 01    | rei [0x01]
-0564: A2 29 4C | ldx 0x4C29
-0567: 86 02    | stx [0x02]
+_nodisk:
+055F: A2 00    | ldx 0x00           // Print no disk message
+0551: 20 54 01 | jsr REL(_func_printstr)
+0564: A2 29    | ldx 0x29           // Print reboot message
+0566: 4C 86 02 | jmp REL(_failboot)
 
 _str_nodisk:   | "Non bootable disë"
 0569: 4E 6F 6E 20 62 6F 6F 74 61 62 6C 65 20 64 69 73 EB
 
-_var_bootsec:
-057A: 10    | 0x10
-057B: 00    | 0x00
+_var_bootsec: // The first sector of the file to run at boot
+057A: 10  00   | 0x0010
 
 _str_started:  | "MCFS boot code starteä"
 057C: 4D 43 46 53 20 62 6F 6F 74 20 63 6F 64 65 20 73 74 61 72 74 65 E4
@@ -81,23 +85,28 @@ _str_nomem:    | "Out of memorù"
 _str_error:    | " erroò"
 05D2: 20 65 72 72 6F F2
 
+_str_ok:       | "Ok®"
 05D8: 4F 6B AE 
 
-_func_mapdrive:
+_func_mapterm:                     // Saves the device address to 0x06 and maps the terminal
 05DB: EF 80    | mmu 0x80
 05DD: 85 06    | sta [0x06]
 05DF: A5 01    | lda [0x01]
 05E1: EF 00    | mmu 0x00
 05E3: 60       | rts
 
-05E4: 38 24
+_func_magic:                        // Sets the carry flag, does a BIT [0x18], and enters printstr ahead of the clc
+05E4: 38       | sec
+05E5: 24       | bit [0x18]
 
-_func_printstr
+_func_printstr                      // Prints string at offset X from the base string
 05E6: 18       | clc
 05E7: 08       | php
-05E8: 20 49 01 | jsr REL(_func_mapdrive)
+05E8: 20 49 01 | jsr REL(_func_mapterm)
 05EB: AC 01 03 | ldy (0x0301)
-05EE: BD 69 05 | lda (_str_nodisk+X)
+05EE: BD       | lda (_var_basestr+X)
+_var_basestr:
+05EF: 69 05    | _str_nodisk
 05F1: 08       | php
 05F2: 29 7F    | and 0x7F
 05F4: 99 10 03 | sta (0x0301+Y)
@@ -115,26 +124,107 @@ _func_printstr
 060C: 98       | tya
 060D: 6D 01 03 | adc (0x0301)
 0610: 8D 01 03 | sta (0x0301)
+_termfunc_ret:                      // Used as a return stub for subroutines using the terminal
 0613: A5 06    | lda [0x06]
 0615: EF 00    | mmu 0x00
 0617: 60       | rts
 
-0618: 20 49 01 9C 04 03 9C 05
-0620: 03 CB AD 05 03 F0 FA 80 EA
+_func_waitkey:
+0618: 20 49 01 | jsr REL(_func_mapterm)
+061B: 9C 04 03 | stz (0x0304)
+061E: 9C 05 03 | stz (0x0305)
+_waitkey_loop:
+0621: CB       | wai
+0622: AD 05 03 | lda (0x0305)
+0625: F0 FA    | beq _waitkey_loop
+0627: 80 EA    | bra _termfunc_ret
 
-0629: 64 0A 64 0C AD 7A 05
-0630: 8D 80 03 CD 80 03 E2 30 D0 69 A9 04 A2 05 8D 82
-0640: 03 CD 82 03 D0 06 CB CA 10 F7 80 57 AD 82 03 30
-0650: 4F A9 7E AC 01 03 C8 5A D0 03 AD 00 03 85 0A C2
-0660: 20 A0 00 24 0C 30 0F C6 0C AD 02 03 C5 08 B0 2B
-0670: 3A 3A 85 04 C8 C8 B9 02 03 91 04 C8 C8 C4 0A 90
-0680: F5 98 18 65 04 85 04 C5 08 B0 10 AD 00 03 7A D0
-0690: 9F
+_bootload:
+0629: 64 0A    | stz [0x0A]         // Clear (0x000A) and (0x000C)
+062B: 64 0C    | stz [0x0C]
+962D: AD 7A 05 | lda (_var_bootsec)
+
+_readloop:
+0630: 8D 80 03 | sta (0x0380)       // Set drive sector number to boot sector
+0633: CD 80 03 | cmp (0x0380)
+0636: E2 30    | sep 0x30
+0638: D0 69    | bne _faildisk      // Fail if no drive is connected
+063A: A9 04    | lda 0x04           // A - Read command
+063C: A2 05    | ldx 0x05           // X - Try counter
+063E: 8D 82 03 | sta (0x0382)
+
+_timeoutloop:
+0641: CD 82 03 | cmp (0x0382)       // Wait up to 6 ticks before timing out
+0644: D0 06    | bne _diskread
+0646: CB       | wai
+0647: CA       | dex
+0648: 10 F7    | bpl _timeoutloop
+064A: 80 57    | bra _faildisk
+
+_diskread:
+064C: AD 82 03 | lda (0x0382)       // Make sure disk command didn't error
+064F: 30 4F    | bmi _faildisk_cmderr
+0651: A9 7E    | lda 0x7E
+0653: AC 01 03 | ldy (0x0301)
+0656: C8       | iny
+0657: 5A       | phy
+0658: D0 03    | bne _last_sector
+065A: AD 00 03 | lda (0x0300)
+_last_sector:
+
+065D: 85 0A    | sta [0x0A]         // Perform address calculation for memory copying
+065F: C2 20    | rep 0x20
+0661: A0 00    | ldy 0x00
+0663: 24 0C    | bit [0x0C]
+0665: 30 0F    | bmi 0x0F
+0667: C6 0C    | dec [0x0C]
+0669: AD 02 03 | lda (0x0302)
+066C: C5 08    | cmp [0x08]
+066E: B0 2B    | bcs _fail_outofmem
+0670: 3A       | dec A
+0671: 3A       | dec A
+0672: 85 04    | sta [0x04]
+0674: C8       | iny
+0675: C8       | iny
+_cpyloop:                           // Copy read data into memory
+0676: B9 02 03 | lda (0x0302+Y)
+0679: 91 04    | sta ((0x04)+Y)
+067B: C8       | iny
+067C: C8       | iny
+067D: C4 0A    | cpy 0x0A
+067F: 90 F5    | bcc _cpyloop
+0681: 98       | tya
+0682: 18       | clc
+0683: 65 04    | adc [0x04]
+0685: 85 04    | sta [0x04]
+0687: C5 08    | cmp [0x08]
+0689: B0 10    | bcs _fail_outofmem
+068B: AD 00 03 | lda (0x0300)
+068E: 7A       | ply
+068F: D0 9F    | bne _readloop      // Loop if there are more sectors to be read
+
 0691: E2 30    | sep 0x30
-0693: A2 46    | ldx 0x40
-0695: 20 54 01 | jsr 0x0154
-0698: 4C 00 05 | jmp 0x0500 // Jump to loaded program
+0693: A2 46    | ldx 0x40           // Print ok message
+0695: 20 54 01 | jsr REL(_func_printstr)
+0698: 4C 00 05 | jmp 0x0500         // Jump to loaded program
 
-069B: E2 30 A2 33 2C
-06A0: A2 27 2C A2 17 20 52 01 A2 40 20 54 01 A2 00 20
-06B0: 54 01 20 86 01 4C 00 04
+_fail_outofmem:                     // Print out of memory message
+069B: E2 30    | sep 0x30
+069D: A2 33    | ldx 0x33
+069F: 2C .. .. | bit (0x27A2)       // Extra BIT to suppress next LDX
+
+_faildisk_cmderr:                   // Print disk missing/read error message
+06A0: A2 27    | ldx 0x27
+06A2: 2C .. .. | bit (0x17A2)       // Extra BIT to suppress next LDX
+
+_faildisk:
+06A3: A2 17    | ldx 0x17           // Print drive missing/timeout message
+06A5: 20 52 01 | jsr REL(_func_magic)
+06A7: A2 40    | ldx 0x40           // Print error message
+06A9: 20 54 01 | jsr REL(_func_printstr)
+06AB: A2 00    | ldx 0x00           // Fall-through to boot fail
+
+_failboot:
+06AF: 20 54 01 | jsr REL(_func_printstr)
+06B2: 20 86 01 | jsr REL(_func_waitkey)
+06B5: 4C 00 04 | jmp 0x400          // Jump back to the CPU's bootloader
